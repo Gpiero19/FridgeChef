@@ -1,7 +1,7 @@
 ---
 name: task-agent
 description: Implements a single scoped feature or fix as defined by the orchestrator's task spec. Invoked once per task. Does not run tests or review code.
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools: [read, write, edit, bash]
 ---
 

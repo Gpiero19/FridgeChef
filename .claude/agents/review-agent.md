@@ -1,7 +1,7 @@
 ---
 name: review-agent
 description: Final quality gate after security-agent approves. Read-only. Runs after task-agent → test-agent → security-agent. Never modifies files.
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools: [read]
 ---
 

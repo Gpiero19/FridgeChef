@@ -1,7 +1,7 @@
 ---
 name: security-agent
 description: Checks code changed by the task-agent for hardcoded secrets, auth/authz gaps, injection vulnerabilities, dependency CVEs, and other common security issues. Read-only with bash access for running security scanners only. Runs after tests pass, before review-agent.
-model: claude-sonnet-4-6
+model: claude-haiku-4-5
 tools: [read, bash]
 ---
 

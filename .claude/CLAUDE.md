@@ -142,6 +142,16 @@ Always include the following when delegating:
 | `security-agent` | List of changed files + full `ARCHITECTURE.md` + stack/language from the active SPEC-0X file |
 | `review-agent` | List of changed files + task spec + full `ARCHITECTURE.md` (+ security report, if security-agent raised LOW/MEDIUM issues) |
 
+## Model selection rationale
+
+Agents use the minimum model capability required for their task:
+
+- `claude-fable-5` — reserved for architect-agent only. Architecture decisions affect the entire project's structure and long-term maintainability, justifying the highest-capability model for the hardest, longest-running reasoning task in the pipeline.
+- `claude-sonnet-5` — brainstorm-agent, task-agent, review-agent. Default efficient model for routine but non-trivial reasoning: conversational design, guided implementation, and quality review.
+- `claude-haiku-4-5` — test-agent, security-agent. Both run structured, checklist-driven tasks (run tests and report, scan for known vulnerability patterns) that don't require deep reasoning — fastest and cheapest option is appropriate here.
+
+To temporarily upgrade any agent during a difficult task (e.g. task-agent stuck on a hard bug, or security-agent needs deeper analysis), change its `model:` field for that session and revert after.
+
 ### Setup task lifecycle
 
 1. Write a clear task spec (what, why, which files, acceptance criteria)

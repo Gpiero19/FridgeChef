@@ -1,7 +1,7 @@
 ---
 name: test-agent
 description: Runs the test suite against files changed by the task-agent and reports pass or fail with full output and coverage. Never modifies code.
-model: claude-sonnet-4-6
+model: claude-haiku-4-5
 tools: [read, bash]
 ---
 

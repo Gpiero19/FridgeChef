@@ -1,7 +1,7 @@
 ---
 name: brainstorm-agent
 description: Activates before any implementation begins. Helps define and refine the project spec through structured questions and design alternatives. Produces a complete SPEC file ready for the orchestrator to execute. Invoked when no SPEC exists for the requested work, or when the user wants to add a new feature to an existing project.
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools: [read, write]
 ---
 
