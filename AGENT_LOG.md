@@ -123,3 +123,58 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: package.json, package-lock.json, tsconfig.json, next.config.ts, next-env.d.ts, tailwind.config.ts, postcss.config.js, .eslintrc.json, .prettierrc, vitest.config.ts, playwright.config.ts, lib/claude.ts, .env.local.example, app/layout.tsx, app/globals.css, app/page.tsx, tests/e2e/smoke.spec.ts
 **Notes**: Task 1 complete. Next: Task 2 — POST /api/suggest-recipes route handler (feature task, needs its own branch `feature/SPEC-01-suggest-recipes`).
 ---
+
+## [2026-07-03 17:35] Task: Task 2 — POST /api/suggest-recipes route handler
+**Agent**: task-agent
+**Action**: Implemented `POST /api/suggest-recipes` accepting `{ ingredients, pantryStaples }`, prompting Claude for exactly 3 recipes, validating request and LLM output with Zod. Added `lib/types.ts` (pure `Recipe`/`Ingredient`/`Difficulty` types, `Ingredient = string` per ADR-010) and `lib/schemas.ts` (Zod mirrors, used only at the route boundary). Error contract follows ARCHITECTURE.md §2: 400 `invalid_request`, 502 `llm_error` (no retry, ADR-003), raw LLM output never surfaced. `maxDuration = 10` exported, `Cache-Control: no-store` set, no ingredient/recipe content ever logged (ARCHITECTURE.md §10).
+**Why**: Core value-generating endpoint; built before the vision route and UI per SPEC ordering.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-suggest-recipes
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: app/api/suggest-recipes/route.ts, lib/types.ts, lib/schemas.ts, __tests__/api/suggest-recipes.test.ts
+**Notes**: Orchestrator independently verified all 4 files on disk and confirmed package.json/package-lock.json untouched (`git diff` empty) despite task-agent installing `@vitest/coverage-v8` via `npm install --no-save` to check coverage locally. Two non-blocking notes carried forward: (1) route.ts uses relative imports instead of a `@/` alias — reasonable, no existing alias convention in repo; (2) `@vitest/coverage-v8` is not yet a persisted devDependency — a future task touching CI/test tooling should add it properly so coverage numbers are reproducible in CI.
+---
+
+## [2026-07-03 17:35] Task: Task 2 — POST /api/suggest-recipes route handler
+**Agent**: test-agent
+**Action**: Ran `npm run test` and coverage check on `app/api/suggest-recipes/route.ts` and `lib/schemas.ts`, plus `npx tsc --noEmit`.
+**Why**: Mandatory test gate before security-agent, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-suggest-recipes
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + test run)
+**Notes**: 4/4 tests passing (valid path, malformed JSON, missing body, empty ingredients). Coverage: route.ts 87.09% lines/83.33% branch/100% funcs; lib/schemas.ts 100% of executable lines — both above the 80% threshold. `tsc --noEmit` clean.
+---
+
+## [2026-07-03 17:35] Task: Task 2 — POST /api/suggest-recipes route handler
+**Agent**: security-agent
+**Action**: Scanned route.ts, lib/types.ts, lib/schemas.ts for secret handling, PII/logging exposure, prompt-injection risk, and LLM-output handling; ran `npm audit`.
+**Why**: Mandatory security gate before review, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-suggest-recipes
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + npm audit)
+**Notes**: CLEAR, 0 issues. Confirmed ANTHROPIC_API_KEY accessed only via lib/claude.ts, no ingredient/recipe content logged, prompt built via JSON.stringify (no injection risk), raw LLM output never surfaced on error, Cache-Control: no-store present, maxDuration=10 present. Only the pre-existing Task-1 postcss LOW-risk finding noted (not new, not re-blocking).
+---
+
+## [2026-07-03 17:35] Task: Task 2 — POST /api/suggest-recipes route handler
+**Agent**: review-agent
+**Action**: Read-only review of all Task 2 files against acceptance criteria and ARCHITECTURE.md §2/§3/§10/§11 and ADR-003/004/010.
+**Why**: Final quality gate before merge, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-suggest-recipes
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: APPROVED, 0 blocking issues. Confirmed error format, Cache-Control, maxDuration, Zod validation-only-at-boundary, pure lib/types.ts, and no-PII-logging all match ARCHITECTURE.md exactly. Relative-imports and unpinned coverage-v8 notes carried forward as non-blocking, tracked for a future CI/tooling task.
+---
+
+## [2026-07-03 17:35] Task: Task 2 — POST /api/suggest-recipes route handler
+**Agent**: orchestrator
+**Action**: Merged `feature/SPEC-01-suggest-recipes` into `main` (fast-forward) and deleted the feature branch.
+**Why**: All gates passed (task-agent → test-agent → security-agent → review-agent all APPROVED/CLEAR/PASS).
+**Outcome**: complete
+**Branch**: merged
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: app/api/suggest-recipes/route.ts, lib/types.ts, lib/schemas.ts, __tests__/api/suggest-recipes.test.ts
+**Notes**: Task 2 complete. Carrying forward as a tracked (non-blocking) item: `@vitest/coverage-v8` should become a real devDependency on whichever task next touches test tooling/CI config, so coverage numbers are reproducible outside this session. Next: Task 3 — POST /api/extract-ingredients route handler (feature task, needs its own branch `feature/SPEC-01-extract-ingredients`).
+---
