@@ -5,6 +5,7 @@ import ModeToggle from "../components/ModeToggle";
 import IngredientTextInput from "../components/IngredientTextInput";
 import PhotoUpload from "../components/PhotoUpload";
 import IngredientConfirmation from "../components/IngredientConfirmation";
+import RecipeList from "../components/RecipeList";
 import { DEFAULT_SELECTED_STAPLES } from "../components/PantryStaples";
 import type { Recipe } from "../lib/types";
 
@@ -25,7 +26,8 @@ type Action =
   | { type: "SET_PANTRY_STAPLES"; pantryStaples: string[] }
   | { type: "GENERATE_START" }
   | { type: "GENERATE_SUCCESS"; recipes: Recipe[] }
-  | { type: "GENERATE_ERROR"; error: string };
+  | { type: "GENERATE_ERROR"; error: string }
+  | { type: "START_OVER" };
 
 const initialState: State = {
   step: "input",
@@ -49,9 +51,12 @@ function reducer(state: State, action: Action): State {
     case "GENERATE_SUCCESS":
       return { ...state, step: "recipes", loading: false, recipes: action.recipes };
     case "GENERATE_ERROR":
-      // Stay on the confirm step — ingredients/staples are untouched so the
-      // user can retry without re-uploading anything.
+      // Stay on the current step — ingredients/staples are untouched so the
+      // user can retry (from confirm) or regenerate (from recipes) without
+      // losing anything.
       return { ...state, loading: false, error: action.error };
+    case "START_OVER":
+      return initialState;
     default:
       return state;
   }
@@ -142,11 +147,13 @@ export default function Home() {
       )}
 
       {state.step === "recipes" && (
-        // ponytail: Task 6 owns the real recipe-cards UI; this just proves the
-        // state machine's terminal transition is wired end to end.
-        <p className="text-gray-700">
-          Got {state.recipes.length} recipes — UI coming in Task 6.
-        </p>
+        <RecipeList
+          recipes={state.recipes}
+          loading={state.loading}
+          error={state.error}
+          onRegenerate={handleGenerate}
+          onStartOver={() => dispatch({ type: "START_OVER" })}
+        />
       )}
     </main>
   );
