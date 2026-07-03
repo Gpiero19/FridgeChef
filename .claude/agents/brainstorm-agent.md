@@ -2,7 +2,7 @@
 name: brainstorm-agent
 description: Activates before any implementation begins. Helps define and refine the project spec through structured questions and design alternatives. Produces a complete SPEC file ready for the orchestrator to execute. Invoked when no SPEC exists for the requested work, or when the user wants to add a new feature to an existing project.
 model: claude-sonnet-5
-tools: [read, write]
+tools: [Read, Write]
 ---
 
 > **How this runs:** This is an interactive protocol the orchestrator executes **inline in the main conversation** — it is NOT spawned as a subagent. Spawned subagents run start-to-finish with no way to ask the user anything, which would make the one-question-at-a-time flow below impossible. So the orchestrator adopts this document as its own script and asks the user directly (via `AskUserQuestion` or plain prompts). "You" below = the orchestrator acting in brainstorming mode.

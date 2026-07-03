@@ -2,6 +2,8 @@
   "permissions": {
     "allow": [
       "Read(*)",
+      "Write(*)",
+      "Edit(*)",
       "Bash(git push origin main)",
       "Bash(git pull)",
       "Bash(git merge feature/*)",
