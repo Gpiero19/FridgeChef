@@ -530,3 +530,36 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: lib/rate-limit.ts, middleware.ts, __tests__/rate-limit.test.ts
 **Notes**: Task 8 complete. This was the last task in SPEC-01 — all 8 tasks now merged to main. Proceeding to Definition of Done verification.
 ---
+
+## [2026-07-03 22:20] Implementation complete: SPEC-01-fridgechef.md
+**Agent**: orchestrator
+**Action**: Verified the Definition of Done checklist against the current state of `main`: re-ran `npm run test` (14/14 pass), `npm run test:e2e` (3/3 pass, both required happy paths green), `npm run build` (succeeds), `npm run lint` (clean), `npx tsc --noEmit` (clean), and grepped the built `.next/static` output for `ANTHROPIC_API_KEY` (no matches).
+**Why**: All 8 tasks are merged; confirming Definition of Done before declaring the SPEC complete.
+**Outcome**: complete
+**Branch**: main
+**SPEC**: SPEC-01-fridgechef.md
+**Notes**:
+- [x] All 8 tasks completed and merged to main
+- [x] All previously passing tests still pass (14 unit + 3 E2E)
+- [x] Security scan returned CLEAR or LOW only (every task: CLEAR or LOW, only the pre-existing Task-1 postcss transitive-dependency advisory ever surfaced)
+- [x] AGENT_LOG.md updated with all entries for this SPEC
+- [ ] ARCHITECTURE.md updated if new patterns introduced — no new pattern required an ADR, but review-agent flagged (Task 8) that ARCHITECTURE.md §11's prose ("rate limiting guards both routes as a shared budget") contradicts ADR-005 immediately below it in the same document (which correctly states only `/api/suggest-recipes` is counted). This is a pre-existing doc inconsistency from the original ARCHITECTURE.md, not something any task introduced — flagged for a human/architect-agent cleanup pass, not blocking.
+- [x] Both API routes and the Zod parsers have ≥80% line coverage (suggest-recipes 87.09%, extract-ingredients 86.04%, schemas.ts 100%)
+- [x] Rate-limit helper has ≥80% line coverage (100%)
+- [x] Playwright E2E: text-input happy path passes
+- [x] Playwright E2E: image-upload happy path passes
+- [ ] App deployed to Vercel and reachable at a public URL — NOT YET. This requires human action (Vercel account, dashboard env var entry) outside any agent's sandbox access. App is fully deploy-ready per Task 7.
+- [x] `ANTHROPIC_API_KEY` absent from any client bundle (re-verified independently via grep on `.next/static`)
+- [x] Uploaded images confirmed not logged or persisted (verified across Task 3 and Task 4 code review + security-agent passes)
+
+**Outstanding non-blocking items carried forward** (none block shipping, all are minor):
+1. `@vitest/coverage-v8` should become a real devDependency (currently installed ad hoc, not in package.json)
+2. `IngredientsArraySchema` naming inconsistency (PascalCase vs. camelCase in lib/schemas.ts)
+3. `Mode` type duplicated between app/page.tsx and ModeToggle.tsx
+4. Missing ingredient dedup on the confirmation chip list (duplicate values would share a React key)
+5. Silent fallback to 0 recipes if `/api/suggest-recipes` ever returned an unexpected 200 shape (Zod on the server should prevent this in practice)
+6. Missing `aria-expanded` on the recipe-card steps toggle button
+7. `ARCHITECTURE.md §11` prose vs. ADR-005 internal contradiction (doc cleanup only, code correctly follows ADR-005)
+
+**Notes**: Implementation complete for SPEC-01-fridgechef.md. All 8 tasks executed and merged; only the actual Vercel deployment step remains, which is intentionally a human action (dashboard env var entry cannot be delegated to a subagent). See the orchestrator's message to the human for full deployment instructions and a list of everything still needed to go live.
+---
