@@ -398,3 +398,47 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: components/RecipeCard.tsx, components/RecipeList.tsx, components/DifficultyBadge.tsx, app/page.tsx, tests/e2e/text-input-flow.spec.ts, tests/e2e/image-upload-flow.spec.ts, tests/e2e/fixtures/fridge.png, tests/e2e/fixtures/mock-recipes.ts, playwright.config.ts
 **Notes**: Task 6 complete. All 6 UI/feature tasks done — remaining: Task 7 (Vercel deployment + README, setup task) and Task 8 (per-IP rate limiting, feature task). The dev-mode CSP/HMR issue tracked since Task 4 is now resolved for E2E purposes (Playwright uses production build); still worth an ARCHITECTURE.md note for local `npm run dev` UX if a human developer hits it interactively (not blocking, no task currently owns this). Tracked non-blocking items carried forward: (1) `@vitest/coverage-v8` needs to become a real devDependency, (2) `IngredientsArraySchema` naming inconsistency, (3) `Mode` type duplication, (4) missing ingredient dedup, (5) silent fallback to 0 recipes on malformed response, (6) missing aria-expanded on steps toggle, (7) recipe list key-by-name edge case. Next: Task 7 — Vercel deployment configuration and README (setup task, runs on main).
 ---
+
+## [2026-07-03 20:05] Task: Task 7 — Vercel deployment configuration and README
+**Agent**: task-agent
+**Action**: Confirmed `next.config.ts` is Vercel-safe as-is (security headers only, no custom server/filesystem writes/incompatible APIs) — no `vercel.json` needed since Vercel's zero-config Next.js detection covers this app. Fully rewrote README.md, replacing the generic scaffold-template README with FridgeChef's actual product description, local setup, required env vars table, test commands, Vercel deploy steps, and the data-privacy statement.
+**Why**: App must be publicly reachable on Vercel to meet the Definition of Done; README must reflect the real app, not the scaffold template.
+**Outcome**: pass
+**Branch**: main
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: README.md
+**Notes**: Orchestrator independently verified README.md is the only changed file (protected files AGENT_LOG.md/PROTOCOL.md/FridgeChef_Project_Brief.md/CHECKLIST.md untouched), and re-ran `npm run build` successfully. No executable code changed, so per the setup-task lifecycle rule test-agent was skipped and the task went straight to security-agent.
+---
+
+## [2026-07-03 20:05] Task: Task 7 — Vercel deployment configuration and README
+**Agent**: security-agent
+**Action**: Scanned README.md for hardcoded secrets/credentials, confirmed correct guidance to set `ANTHROPIC_API_KEY` via the Vercel dashboard rather than committing it, re-confirmed `next.config.ts`'s security headers are unchanged, and confirmed no `vercel.json` was created; ran `npm audit`.
+**Why**: Security-agent runs on every setup task regardless of test-agent's involvement — setup tasks carry the highest risk of hardcoded secrets/misconfiguration.
+**Outcome**: pass
+**Branch**: main
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + npm audit)
+**Notes**: CLEAR, 0 issues. Only the pre-existing Task-1 postcss LOW-risk finding noted (not new, no dependency changes in this task).
+---
+
+## [2026-07-03 20:05] Task: Task 7 — Vercel deployment configuration and README
+**Agent**: review-agent
+**Action**: Read-only review of README.md against acceptance criteria, cross-checked against package.json scripts, .env.local.example, and ARCHITECTURE.md for accuracy.
+**Why**: Final quality gate before commit, per setup task lifecycle.
+**Outcome**: pass
+**Branch**: main
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: APPROVED, 0 blocking issues. Confirmed README is accurate and consistent with package.json/ARCHITECTURE.md/.env.local.example — env vars, test commands, deploy steps, and data-privacy statement all correct. One trivial non-blocking note: README doesn't mention the Vercel Hobby 10s function limit/ADR-003 detail, but that's implementation detail not required by the task's acceptance criteria.
+---
+
+## [2026-07-03 20:05] Task: Task 7 — Vercel deployment configuration and README
+**Agent**: orchestrator
+**Action**: Committed README.md directly to `main` (setup task, no feature branch, no merge step).
+**Why**: All gates passed (task-agent → security-agent → review-agent all APPROVED/CLEAR/PASS; test-agent correctly skipped, docs-only change).
+**Outcome**: complete
+**Branch**: main
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: README.md
+**Notes**: Task 7 complete. App is deploy-ready; the actual Vercel deploy (import repo, set ANTHROPIC_API_KEY in dashboard) is a human/orchestrator action outside task-agent's sandbox access, not yet performed. Only Task 8 (per-IP rate limiting) remains before Definition of Done can be fully verified. Next: Task 8 — Per-IP rate limiting on the API routes (feature task, needs its own branch `feature/SPEC-01-rate-limiting`).
+---
