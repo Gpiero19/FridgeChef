@@ -288,3 +288,58 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: app/page.tsx, components/IngredientTextInput.tsx, components/PhotoUpload.tsx, components/ModeToggle.tsx
 **Notes**: Task 4 complete. Tracked non-blocking items carried forward: (1) `@vitest/coverage-v8` needs to become a real devDependency, (2) `IngredientsArraySchema` naming inconsistency, (3) `Mode` type duplication between page.tsx/ModeToggle.tsx, (4) dev-mode-only CSP/HMR conflict (next dev breaks hydration due to no 'unsafe-eval' in CSP — production build unaffected). None blocking. Next: Task 5 — Ingredient confirmation and pantry staples step (feature task, needs its own branch `feature/SPEC-01-confirmation-staples`) — this is where the useReducer state machine gets introduced.
 ---
+
+## [2026-07-03 19:40] Task: Task 5 — Ingredient confirmation and pantry staples step
+**Agent**: task-agent
+**Action**: Introduced the `useReducer` state machine (`step: "input" | "confirm" | "recipes"`) in `app/page.tsx` per ARCHITECTURE.md §5, replacing Task 4's local `useState` preview. Built `IngredientChip` (shared removable/toggle variants), `PantryStaples` (6 required staples, Salt/Pepper/Olive oil pre-selected via exported `DEFAULT_SELECTED_STAPLES`, free-text add on Enter/comma/blur), `IngredientConfirmation` (removable ingredient chips, free-text add, embeds PantryStaples, inline error, disabled+loading Generate button). On API error, only `loading`/`error` update in the reducer — ingredients/staples stay intact for retry. On success, transitions to a `"recipes"` step placeholder (Task 6 owns the real UI).
+**Why**: Safety net for the image path and the staples feature; bridges input and output. First task to introduce the cross-step reducer.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-confirmation-staples
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: components/IngredientChip.tsx, components/PantryStaples.tsx, components/IngredientConfirmation.tsx, app/page.tsx
+**Notes**: Orchestrator independently verified all files on disk and did a full manual browser click-through (Playwright, production build) of the actual flow: typed ingredients → confirm screen with removable chips → toggled a staple → removed a chip → clicked Generate Recipes against the real API (no valid ANTHROPIC_API_KEY in local env, so it genuinely failed) → confirmed the error message displayed AND all ingredient/staple state was retained exactly as left, matching the "retry without re-uploading" acceptance criterion precisely. (Testing note: first manual-verification attempt showed a stale Task-4 build because a `next start` process from the prior task's verification was still holding port 3000 — re-ran on port 3001 against a fresh build once diagnosed; not a code defect.)
+---
+
+## [2026-07-03 19:40] Task: Task 5 — Ingredient confirmation and pantry staples step
+**Agent**: test-agent
+**Action**: Ran `npm run test` (existing 9-test suite), `npx tsc --noEmit`, `npm run lint`, `npm run build`. No new test file required per SPEC (component/E2E tests land in Task 6).
+**Why**: Mandatory test gate before security-agent, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-confirmation-staples
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + test/build run)
+**Notes**: All 4 checks pass, no regression. `/` route First Load JS ~105KB, well under the 200KB ARCHITECTURE.md §12 ceiling.
+---
+
+## [2026-07-03 19:40] Task: Task 5 — Ingredient confirmation and pantry staples step
+**Agent**: security-agent
+**Action**: Scanned the new confirmation/staples components and the modified page.tsx for server-secret leakage, unsafe DOM patterns, persistence usage, fetch payload contents, and error-message hygiene; ran `npm audit`.
+**Why**: Mandatory security gate before review, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-confirmation-staples
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + npm audit)
+**Notes**: CLEAR, 0 issues. Confirmed zero server-only env/API-key references, no dangerouslySetInnerHTML/eval, all user strings rendered as plain React text, zero localStorage/cookie usage, fetch body sends only `{ ingredients, pantryStaples }`, errors never expose raw exceptions. Only the pre-existing Task-1 postcss LOW-risk finding noted (not new).
+---
+
+## [2026-07-03 19:40] Task: Task 5 — Ingredient confirmation and pantry staples step
+**Agent**: review-agent
+**Action**: Read-only review of all Task 5 files against acceptance criteria and ARCHITECTURE.md §5, independently verifying the reducer logic (not just trusting the orchestrator's manual test).
+**Why**: Final quality gate before merge, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-confirmation-staples
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: APPROVED, 2 non-blocking issues: (1) no dedup applied to ingredient lists from text parsing or Claude vision extraction — a duplicate value would share a React key and removing one chip would remove all matching instances (IngredientTextInput.tsx even has a `ponytail:` comment flagging this dedup as deferred to Task 5, which didn't fully land it); (2) if a 200 response from `/api/suggest-recipes` ever had an unexpected shape (no `recipes` array), the code silently falls back to an empty array and shows "Got 0 recipes" rather than surfacing an error — low-probability given server-side Zod validation guarantees the shape, but a silent-failure path. Both flagged as minor correctness hardening, not spec violations — approved as-is.
+---
+
+## [2026-07-03 19:40] Task: Task 5 — Ingredient confirmation and pantry staples step
+**Agent**: orchestrator
+**Action**: Merged `feature/SPEC-01-confirmation-staples` into `main` (fast-forward) and deleted the feature branch.
+**Why**: All gates passed (task-agent → test-agent → security-agent → review-agent all APPROVED/CLEAR/PASS), plus orchestrator's own manual Playwright browser verification of the full input→confirm→error-retry flow.
+**Outcome**: complete
+**Branch**: merged
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: components/IngredientChip.tsx, components/PantryStaples.tsx, components/IngredientConfirmation.tsx, app/page.tsx
+**Notes**: Task 5 complete. Tracked non-blocking items carried forward: (1) `@vitest/coverage-v8` needs to become a real devDependency, (2) `IngredientsArraySchema` naming inconsistency, (3) `Mode` type duplication, (4) dev-mode CSP/HMR conflict, (5) missing ingredient dedup on chip-list (review-agent finding), (6) silent fallback to 0 recipes on unexpected response shape (review-agent finding). None blocking so far but this list is growing — worth a small cleanup task once Task 6/7/8 land. Next: Task 6 — Recipe cards UI (feature task, needs its own branch `feature/SPEC-01-recipe-cards`) — this is where E2E Playwright specs (text-input-flow, image-upload-flow) get added per the SPEC.
+---
