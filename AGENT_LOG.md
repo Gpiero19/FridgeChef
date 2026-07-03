@@ -178,3 +178,58 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: app/api/suggest-recipes/route.ts, lib/types.ts, lib/schemas.ts, __tests__/api/suggest-recipes.test.ts
 **Notes**: Task 2 complete. Carrying forward as a tracked (non-blocking) item: `@vitest/coverage-v8` should become a real devDependency on whichever task next touches test tooling/CI config, so coverage numbers are reproducible outside this session. Next: Task 3 — POST /api/extract-ingredients route handler (feature task, needs its own branch `feature/SPEC-01-extract-ingredients`).
 ---
+
+## [2026-07-03 17:50] Task: Task 3 — POST /api/extract-ingredients route handler
+**Agent**: task-agent
+**Action**: Implemented `POST /api/extract-ingredients` accepting multipart/form-data with an image field, validating ≤5MB and MIME in {jpeg,png,webp}, converting to an in-memory Buffer/base64, sending to Claude vision, and validating the JSON response with a new `IngredientsArraySchema` added to `lib/schemas.ts`. Followed the Task 2 sibling route's established pattern (log() helper, error handling, Cache-Control/maxDuration). Error contract per ARCHITECTURE.md §2: 400/413/415/502 as specified.
+**Why**: The image path is FridgeChef's differentiator; separate from recipe generation so the UI can insert a confirmation step.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-extract-ingredients
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: app/api/extract-ingredients/route.ts, __tests__/api/extract-ingredients.test.ts, lib/schemas.ts (added IngredientsArraySchema only, existing schemas untouched)
+**Notes**: Orchestrator independently verified all 3 files on disk and confirmed existing Task 2 schemas in lib/schemas.ts were not altered. task-agent replaced an `instanceof File` check with duck-typing (checks for `arrayBuffer` function, numeric `size`, string `type`) due to a real cross-runtime File-identity mismatch between the Next.js runtime and Vitest/jsdom test environment — flagged for awareness, judged benign by both security-agent and review-agent since real size/MIME checks still run downstream regardless.
+---
+
+## [2026-07-03 17:50] Task: Task 3 — POST /api/extract-ingredients route handler
+**Agent**: test-agent
+**Action**: Ran `npm run test` (full suite, including Task 2's suggest-recipes tests) and coverage check on `app/api/extract-ingredients/route.ts`, plus `npx tsc --noEmit`.
+**Why**: Mandatory test gate before security-agent, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-extract-ingredients
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + test run)
+**Notes**: 9/9 tests passing (5 new + 4 from Task 2, no regression). Coverage: route.ts 86.04% lines/90.47% branch/100% funcs — above the 80% threshold. `tsc --noEmit` clean.
+---
+
+## [2026-07-03 17:50] Task: Task 3 — POST /api/extract-ingredients route handler
+**Agent**: security-agent
+**Action**: Scanned the image-upload route for file-size/MIME enforcement, Buffer handling, PII/logging exposure, API key access, and evaluated the duck-typing file-detection change; ran `npm audit`.
+**Why**: Mandatory security gate before review, per feature task lifecycle — highest-risk route in the app (file upload path).
+**Outcome**: pass
+**Branch**: feature/SPEC-01-extract-ingredients
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + npm audit)
+**Notes**: CLEAR, 0 issues. Confirmed size check runs before the full Claude call, MIME allowlist enforced, image Buffer never logged/persisted/returned, ANTHROPIC_API_KEY only via lib/claude.ts, raw Claude output never surfaced on error, Cache-Control/maxDuration present. Duck-typing file-check judged a benign cross-runtime compatibility fix, not a validation weakening. Only the pre-existing Task-1 postcss LOW-risk finding noted (not new).
+---
+
+## [2026-07-03 17:50] Task: Task 3 — POST /api/extract-ingredients route handler
+**Agent**: review-agent
+**Action**: Read-only review of all Task 3 files against acceptance criteria, ARCHITECTURE.md, and pattern consistency with the Task 2 sibling route.
+**Why**: Final quality gate before merge, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-extract-ingredients
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: APPROVED, 1 non-blocking issue: `IngredientsArraySchema` in lib/schemas.ts uses PascalCase while every other schema export in the file is camelCase (`recipeSchema`, `suggestRecipesRequestSchema`) — cosmetic naming inconsistency, flagged for a future rename, not worth a retry cycle. Confirmed pattern consistency with Task 2's route, duck-typing fix judged reasonable, no rate limiting present (correctly deferred to Task 8).
+---
+
+## [2026-07-03 17:50] Task: Task 3 — POST /api/extract-ingredients route handler
+**Agent**: orchestrator
+**Action**: Merged `feature/SPEC-01-extract-ingredients` into `main` (fast-forward) and deleted the feature branch.
+**Why**: All gates passed (task-agent → test-agent → security-agent → review-agent all APPROVED/CLEAR/PASS).
+**Outcome**: complete
+**Branch**: merged
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: app/api/extract-ingredients/route.ts, __tests__/api/extract-ingredients.test.ts, lib/schemas.ts
+**Notes**: Task 3 complete. Both API routes now exist. Tracked non-blocking items carried forward: (1) `@vitest/coverage-v8` needs to become a real devDependency, (2) `IngredientsArraySchema` naming inconsistency (PascalCase vs camelCase) — both worth a small cleanup pass, neither blocking. Next: Task 4 — Input screen (text and image upload) (feature task, needs its own branch `feature/SPEC-01-input-screen`).
+---
