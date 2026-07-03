@@ -233,3 +233,58 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: app/api/extract-ingredients/route.ts, __tests__/api/extract-ingredients.test.ts, lib/schemas.ts
 **Notes**: Task 3 complete. Both API routes now exist. Tracked non-blocking items carried forward: (1) `@vitest/coverage-v8` needs to become a real devDependency, (2) `IngredientsArraySchema` naming inconsistency (PascalCase vs camelCase) — both worth a small cleanup pass, neither blocking. Next: Task 4 — Input screen (text and image upload) (feature task, needs its own branch `feature/SPEC-01-input-screen`).
 ---
+
+## [2026-07-03 19:30] Task: Task 4 — Input screen (text and image upload)
+**Agent**: task-agent
+**Action**: Replaced the Task 1 placeholder `app/page.tsx` with a mobile-first landing page: mode toggle (text/photo), `IngredientTextInput` (parses comma/newline text, disables submit when empty), `PhotoUpload` (client-side MIME/size validation before any request, dynamically imports `browser-image-compression` only on the photo path, compresses to ~1024px, POSTs to `/api/extract-ingredients`), `ModeToggle`. Orchestrator scoped this task down to local `useState` placeholders (no reducer/confirmation UI yet) since Task 5 hasn't been built.
+**Why**: Entry point for both input paths; scoped to avoid speculatively building Task 5/6 state machinery before it's needed.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-input-screen
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: app/page.tsx, components/IngredientTextInput.tsx, components/PhotoUpload.tsx, components/ModeToggle.tsx
+**Notes**: Orchestrator independently verified all files on disk, ran build/lint/tsc, and did a full manual browser check (Playwright, 375px viewport) against a production build (`npm run build && npm run start`). Found and diagnosed an apparent bug (Find Recipes button stayed disabled after typing) that only reproduced under `next dev` — traced to next.config.ts's CSP (`script-src 'self' 'unsafe-inline'`, no `'unsafe-eval'`) blocking Next's react-refresh/HMR runtime from using eval, which broke hydration in dev mode only. Confirmed non-issue against the production build (button enables correctly, full text and photo-mode flows work). This is a pre-existing Task 1 CSP config interacting with dev tooling, not a Task 4 defect — logged here for visibility in case a future task wants a dev-only CSP relaxation.
+---
+
+## [2026-07-03 19:30] Task: Task 4 — Input screen (text and image upload)
+**Agent**: test-agent
+**Action**: Ran `npm run test` (existing 9-test suite), `npx tsc --noEmit`, `npm run lint`, `npm run build`. No new test file required per SPEC (component/E2E tests land in Task 6).
+**Why**: Mandatory test gate before security-agent, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-input-screen
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + test/build run)
+**Notes**: All 4 checks pass, no regression. `/` route First Load JS ~104KB, well under the 200KB ARCHITECTURE.md §12 ceiling — confirms `browser-image-compression` isn't in the initial bundle.
+---
+
+## [2026-07-03 19:30] Task: Task 4 — Input screen (text and image upload)
+**Agent**: security-agent
+**Action**: Scanned the new client components for server-secret leakage, unsafe DOM patterns, validation-before-network-call ordering, and persistence usage; ran `npm audit`.
+**Why**: Mandatory security gate before review, per feature task lifecycle — first client-side UI code in the project.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-input-screen
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + npm audit)
+**Notes**: CLEAR, 0 issues. Confirmed zero server-only env/API-key references in client components, client-side MIME/size checks run before compression or fetch, no dangerouslySetInnerHTML/eval, no localStorage/cookie usage, browser-image-compression dynamically imported only on photo path. Only the pre-existing Task-1 postcss LOW-risk finding noted (not new).
+---
+
+## [2026-07-03 19:30] Task: Task 4 — Input screen (text and image upload)
+**Agent**: review-agent
+**Action**: Read-only review of all Task 4 files against acceptance criteria and ARCHITECTURE.md §5/§7/§11/§12.
+**Why**: Final quality gate before merge, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-input-screen
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: APPROVED, 0 blocking issues. Confirmed defense-in-depth client validation, dynamic import strategy, no server-secret leakage, ponytail-commented scope hand-off to Task 5. One trivial non-blocking note: `Mode = "text" | "photo"` union type is duplicated between app/page.tsx and ModeToggle.tsx rather than shared — worth consolidating whenever Task 5 touches this area, not worth a retry.
+---
+
+## [2026-07-03 19:30] Task: Task 4 — Input screen (text and image upload)
+**Agent**: orchestrator
+**Action**: Merged `feature/SPEC-01-input-screen` into `main` (fast-forward) and deleted the feature branch.
+**Why**: All gates passed (task-agent → test-agent → security-agent → review-agent all APPROVED/CLEAR/PASS), plus orchestrator's own manual Playwright browser verification at 375px.
+**Outcome**: complete
+**Branch**: merged
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: app/page.tsx, components/IngredientTextInput.tsx, components/PhotoUpload.tsx, components/ModeToggle.tsx
+**Notes**: Task 4 complete. Tracked non-blocking items carried forward: (1) `@vitest/coverage-v8` needs to become a real devDependency, (2) `IngredientsArraySchema` naming inconsistency, (3) `Mode` type duplication between page.tsx/ModeToggle.tsx, (4) dev-mode-only CSP/HMR conflict (next dev breaks hydration due to no 'unsafe-eval' in CSP — production build unaffected). None blocking. Next: Task 5 — Ingredient confirmation and pantry staples step (feature task, needs its own branch `feature/SPEC-01-confirmation-staples`) — this is where the useReducer state machine gets introduced.
+---
