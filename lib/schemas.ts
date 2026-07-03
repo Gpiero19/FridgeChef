@@ -24,3 +24,6 @@ export const suggestRecipesRequestSchema = z.object({
 });
 
 export type SuggestRecipesRequest = z.infer<typeof suggestRecipesRequestSchema>;
+
+// Response payload for POST /api/extract-ingredients
+export const IngredientsArraySchema = z.array(z.string());
