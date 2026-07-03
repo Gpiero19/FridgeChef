@@ -442,3 +442,91 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: README.md
 **Notes**: Task 7 complete. App is deploy-ready; the actual Vercel deploy (import repo, set ANTHROPIC_API_KEY in dashboard) is a human/orchestrator action outside task-agent's sandbox access, not yet performed. Only Task 8 (per-IP rate limiting) remains before Definition of Done can be fully verified. Next: Task 8 — Per-IP rate limiting on the API routes (feature task, needs its own branch `feature/SPEC-01-rate-limiting`).
 ---
+
+## [2026-07-03 22:00] Task: Task 8 — Per-IP rate limiting on the API routes
+**Agent**: task-agent
+**Action**: Implemented a per-IP sliding-window rate limiter (`lib/rate-limit.ts`, 5/hour, in-memory Map) gated via `middleware.ts` scoped to `/api/suggest-recipes` only by `matcher` config, per ADR-005 — `/api/extract-ingredients` is never touched. Exceeding the limit returns 429 `{ error: "rate_limited", message }` with `Retry-After`. No existing route handlers modified.
+**Why**: Protects the Anthropic API budget on a public deploy without a managed service; placed last so it wraps finished routes.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-rate-limiting
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: lib/rate-limit.ts, middleware.ts, __tests__/rate-limit.test.ts
+**Notes**: Orchestrator independently verified files on disk and re-ran the full test suite (14/14 pass) and build. ADR-005 correctly followed over the SPEC task's literal "guards both routes" wording (ADR-005 is authoritative and supersedes it).
+---
+
+## [2026-07-03 22:00] Task: Task 8 — Per-IP rate limiting on the API routes
+**Agent**: test-agent
+**Action**: Ran `npm run test` (14 tests: 5 new + 9 pre-existing), coverage check on `lib/rate-limit.ts`, `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+**Why**: Mandatory test gate before security-agent, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-rate-limiting
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + test run)
+**Notes**: 14/14 pass, no regression. 100% line coverage on lib/rate-limit.ts (threshold 80%). All 5 required scenarios present (under limit, boundary, over limit, window reset, distinct IPs). Build succeeds with middleware compiled.
+---
+
+## [2026-07-03 22:00] Task: Task 8 — Per-IP rate limiting on the API routes
+**Agent**: security-agent
+**Action**: Scanned rate-limit helper and middleware for IP-spoofing risk, route-scoping correctness, secret handling, response-body leakage, PII logging, and unbounded memory growth; ran `npm audit`.
+**Why**: Mandatory security gate before review — this is the app's sole abuse-protection layer.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-rate-limiting
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + npm audit)
+**Notes**: CLEAR, 0 issues (first pass). Confirmed first-hop `x-forwarded-for` extraction is correct and safe-degrading, `matcher` precisely scopes to `/api/suggest-recipes` (no typo/path risk), extract-ingredients truly untouched, no secrets, 429 body doesn't leak internal state, unbounded Map growth accepted as a documented v1 tradeoff (SPEC-05 upgrade path). Only the pre-existing Task-1 postcss LOW-risk finding noted (not new).
+---
+
+## [2026-07-03 22:00] Task: Task 8 — Per-IP rate limiting on the API routes
+**Agent**: review-agent
+**Action**: Read-only review against acceptance criteria and ARCHITECTURE.md §11/ADR-005.
+**Why**: Final quality gate before merge, per feature task lifecycle. First-pass result below; this is the last task in SPEC-01.
+**Outcome**: retry
+**Branch**: feature/SPEC-01-rate-limiting
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: CHANGES NEEDED (retry 1/3 for review-agent gate on this task): middleware.ts's 429 branch emitted no structured log, violating ARCHITECTURE.md §10 (rate_limited is a named required event) and §11 (must log a truncated/hashed IP on 429 events). Because middleware short-circuits before route.ts runs, this event was never logged anywhere in the app. Flagged as architecture-conformance, not a spec/test failure — re-delegated to task-agent with this feedback.
+---
+
+## [2026-07-03 22:05] Task: Task 8 — Per-IP rate limiting on the API routes (retry — logging fix)
+**Agent**: task-agent
+**Action**: Added a structured `console.log(JSON.stringify(...))` call in middleware.ts's 429 branch: `{ timestamp, level: "warn", event: "rate_limited", requestId: crypto.randomUUID(), status: 429, durationMs: 0, ip: truncatedIp }`. IP truncated to first two dot/colon-separated segments (never raw) — chose truncation over hashing since Next.js middleware runs in the Edge runtime, which lacks `node:crypto` (only Web Crypto's `crypto.subtle`, which is async and would complicate the synchronous middleware function).
+**Why**: Directly addresses review-agent's CHANGES NEEDED finding.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-rate-limiting
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: middleware.ts
+**Notes**: Orchestrator independently verified the fix by reading middleware.ts and re-ran the full test suite (14/14 pass) and build (middleware compiled, 34.4KB Edge bundle).
+---
+
+## [2026-07-03 22:05] Task: Task 8 — Per-IP rate limiting on the API routes
+**Agent**: security-agent
+**Action**: Follow-up focused check on the logging fix — confirmed raw IP never logged, `crypto.randomUUID()` is Edge-compatible Web Crypto (not node:crypto), no other PII logged, truncation logic handles IPv4/IPv6/"unknown" fallback correctly.
+**Why**: review-agent's prior verdict recommended a quick security re-check on the new log line's IP handling before final approval.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-rate-limiting
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: CLEAR, 0 issues.
+---
+
+## [2026-07-03 22:05] Task: Task 8 — Per-IP rate limiting on the API routes
+**Agent**: review-agent
+**Action**: Re-reviewed middleware.ts after the logging fix; independently evaluated an edge case (IP-like string with no dot/colon separators would not be truncated) and judged it an acceptable, effectively-unreachable-on-Vercel v1 edge case, not worth blocking on. Re-confirmed route-scoping, error format, and test coverage from the original review still hold (unchanged by this diff).
+**Why**: Final quality gate before merge, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-rate-limiting
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: APPROVED, 0 blocking issues. Suggested (optional, not required) a one-word comment tweak documenting the "always-dotted/colon IP" assumption in the truncation logic.
+---
+
+## [2026-07-03 22:05] Task: Task 8 — Per-IP rate limiting on the API routes
+**Agent**: orchestrator
+**Action**: Merged `feature/SPEC-01-rate-limiting` into `main` (fast-forward) and deleted the feature branch.
+**Why**: All gates passed after one retry cycle (task-agent → test-agent → security-agent → review-agent[retry→pass] → security-agent[follow-up] → review-agent[final APPROVED]).
+**Outcome**: complete
+**Branch**: merged
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: lib/rate-limit.ts, middleware.ts, __tests__/rate-limit.test.ts
+**Notes**: Task 8 complete. This was the last task in SPEC-01 — all 8 tasks now merged to main. Proceeding to Definition of Done verification.
+---
