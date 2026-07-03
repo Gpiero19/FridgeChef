@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(*)",
+      "Bash(git push origin main)",
+      "Bash(git pull)",
+      "Bash(git merge feature/*)",
+      "Bash(git branch -d feature/*)",
+      "Bash(git checkout main)",
+      "Bash(git checkout -b feature/*)",
+      "Bash(git branch --show-current)",
+      "Bash(git add -A)",
+      "Bash(git commit -m *)",
+      "Bash(git status)",
+      "Bash(git log *)",
+      "Bash(npm test)",
+      "Bash(npm test *)",
+      "Bash(npm run test)",
+      "Bash(npm run test *)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint *)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run build)",
+      "Bash(npm run build *)",
+      "Bash(npm audit)",
+      "Bash(npm audit *)",
+      "Bash(npx *)",
+      "Bash(pnpm *)",
+      "Bash(yarn *)",
+      "Bash(pytest *)",
+      "Bash(pip-audit)",
+      "Bash(pip-audit *)",
+      "Bash(go test *)",
+      "Bash(govulncheck *)",
+      "Bash(bundler-audit)",
+      "Bash(bundler-audit *)"
+    ],
+    "deny": [
+      "Bash(git reset --hard *)",
+      "Bash(git clean -f *)",
+      "Bash(git rebase *)",
+      "Bash(rm -rf *)",
+      "Bash(drop table *)",
+      "Bash(sudo *)"
+    ]
+  }
+}
