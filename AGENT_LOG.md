@@ -343,3 +343,58 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: components/IngredientChip.tsx, components/PantryStaples.tsx, components/IngredientConfirmation.tsx, app/page.tsx
 **Notes**: Task 5 complete. Tracked non-blocking items carried forward: (1) `@vitest/coverage-v8` needs to become a real devDependency, (2) `IngredientsArraySchema` naming inconsistency, (3) `Mode` type duplication, (4) dev-mode CSP/HMR conflict, (5) missing ingredient dedup on chip-list (review-agent finding), (6) silent fallback to 0 recipes on unexpected response shape (review-agent finding). None blocking so far but this list is growing — worth a small cleanup task once Task 6/7/8 land. Next: Task 6 — Recipe cards UI (feature task, needs its own branch `feature/SPEC-01-recipe-cards`) — this is where E2E Playwright specs (text-input-flow, image-upload-flow) get added per the SPEC.
 ---
+
+## [2026-07-03 19:52] Task: Task 6 — Recipe cards UI
+**Agent**: task-agent
+**Action**: Built `DifficultyBadge` (fixed easy/medium/hard color mapping), `RecipeCard` (name, cuisine, cook time, badge, green used-ingredients, amber missing-ingredients hidden when empty, collapsed-by-default steps with inline toggle), `RecipeList` (3 cards, Regenerate, Start over). Wired the `"recipes"` step in `app/page.tsx`, added a `START_OVER` reducer action resetting to `initialState`; Regenerate reuses the existing `handleGenerate()` unchanged. Added `tests/e2e/text-input-flow.spec.ts` and `tests/e2e/image-upload-flow.spec.ts` with a shared mock-recipes fixture and a tiny fixture PNG, mocking both API routes via `page.route` — no real Anthropic calls.
+**Why**: Output surface, end of both happy paths, last feature before deploy.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-recipe-cards
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: components/RecipeCard.tsx, components/RecipeList.tsx, components/DifficultyBadge.tsx, app/page.tsx, tests/e2e/text-input-flow.spec.ts, tests/e2e/image-upload-flow.spec.ts, tests/e2e/fixtures/fridge.png, tests/e2e/fixtures/mock-recipes.ts, playwright.config.ts
+**Notes**: task-agent also modified `playwright.config.ts` (outside its original file list, flagged itself) — changed `webServer.command` from `npm run dev` to `npm run build && npm run start` because `next dev`'s HMR runtime uses `eval()`, which the app's CSP (`script-src` without `'unsafe-eval'`, set in Task 1) blocks, silently breaking hydration for every interactive component under dev mode. This is exactly the same false-alarm issue the orchestrator independently diagnosed during manual browser verification on Tasks 4 and 5 (confirmed fine against production builds both times) — this is the first task where E2E tests actually exercise real interactivity, so it's the first place the landmine had to be worked around for real. Does not touch the CSP itself (ADR-008 stands). Orchestrator independently verified all files on disk, ran `npm run test:e2e` directly (3/3 pass, including both new specs asserting exactly 3 cards).
+---
+
+## [2026-07-03 19:52] Task: Task 6 — Recipe cards UI
+**Agent**: test-agent
+**Action**: Ran `npm run test` (unit), `npm run test:e2e` (Playwright, now building+starting production per the config change), `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+**Why**: Mandatory test gate before security-agent, per feature task lifecycle — first task where E2E is the primary acceptance criterion.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-recipe-cards
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + test/build run)
+**Notes**: 12/12 tests pass (9 unit + 3 E2E). Both new E2E specs explicitly assert exactly 3 recipe cards via `toHaveCount(3)`. tsc/lint/build all clean. `/` route First Load JS ~106KB, under the 200KB ARCHITECTURE.md §12 ceiling.
+---
+
+## [2026-07-03 19:52] Task: Task 6 — Recipe cards UI
+**Agent**: security-agent
+**Action**: Scanned the new recipe-card components, the START_OVER reducer reset, and the playwright.config.ts change for server-secret leakage, LLM-content injection risk, incomplete state reset, and test-env secret handling; ran `npm audit`.
+**Why**: Mandatory security gate before review, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-recipe-cards
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + npm audit)
+**Notes**: CLEAR, 0 issues. Confirmed no server-only env/API-key references, all LLM-generated recipe content rendered as plain React text (no dangerouslySetInnerHTML/injection risk), START_OVER fully resets all state fields including error, playwright.config.ts change doesn't leak secrets or disable the CSP (E2E fully mocks API calls), fixtures contain only synthetic data. Only the pre-existing Task-1 postcss LOW-risk finding noted (not new).
+---
+
+## [2026-07-03 19:52] Task: Task 6 — Recipe cards UI
+**Agent**: review-agent
+**Action**: Read-only review of all Task 6 files against acceptance criteria, ARCHITECTURE.md §5, and the playwright.config.ts deviation.
+**Why**: Final quality gate before merge, per feature task lifecycle.
+**Outcome**: pass
+**Branch**: feature/SPEC-01-recipe-cards
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: APPROVED, 0 blocking issues. Confirmed the playwright.config.ts fix is well-scoped and doesn't touch the CSP header (ADR-008 stands), matches the orchestrator's own independently-diagnosed history of the same dev-mode issue on Tasks 4/5. Two trivial non-blocking polish notes: missing `aria-expanded` on the steps toggle button, and `key={recipe.name}` could theoretically collide (very low risk given upstream Zod validation guarantees 3 recipes).
+---
+
+## [2026-07-03 19:52] Task: Task 6 — Recipe cards UI
+**Agent**: orchestrator
+**Action**: Merged `feature/SPEC-01-recipe-cards` into `main` (fast-forward) and deleted the feature branch.
+**Why**: All gates passed (task-agent → test-agent → security-agent → review-agent all APPROVED/CLEAR/PASS), plus orchestrator independently ran the E2E suite directly before delegating to test-agent.
+**Outcome**: complete
+**Branch**: merged
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: components/RecipeCard.tsx, components/RecipeList.tsx, components/DifficultyBadge.tsx, app/page.tsx, tests/e2e/text-input-flow.spec.ts, tests/e2e/image-upload-flow.spec.ts, tests/e2e/fixtures/fridge.png, tests/e2e/fixtures/mock-recipes.ts, playwright.config.ts
+**Notes**: Task 6 complete. All 6 UI/feature tasks done — remaining: Task 7 (Vercel deployment + README, setup task) and Task 8 (per-IP rate limiting, feature task). The dev-mode CSP/HMR issue tracked since Task 4 is now resolved for E2E purposes (Playwright uses production build); still worth an ARCHITECTURE.md note for local `npm run dev` UX if a human developer hits it interactively (not blocking, no task currently owns this). Tracked non-blocking items carried forward: (1) `@vitest/coverage-v8` needs to become a real devDependency, (2) `IngredientsArraySchema` naming inconsistency, (3) `Mode` type duplication, (4) missing ingredient dedup, (5) silent fallback to 0 recipes on malformed response, (6) missing aria-expanded on steps toggle, (7) recipe list key-by-name edge case. Next: Task 7 — Vercel deployment configuration and README (setup task, runs on main).
+---
