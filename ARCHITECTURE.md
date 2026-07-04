@@ -7,7 +7,7 @@ Everything here is derived from SPEC-01. Decisions the SPEC left open are docume
 
 ## 1. System overview
 
-FridgeChef is a stateless, mobile-first Next.js 15 (App Router) web app deployed on Vercel. Users provide ingredients by typing or photographing their fridge; the client calls two server-side route handlers which invoke the Anthropic Claude API (Haiku 4.5) and return 3 structured recipes. There are no accounts, no database, and no persistence of any kind. The system boundary is: browser client ↔ two Next.js route handlers ↔ Anthropic API. Nothing else.
+FridgeChef is a stateless, mobile-first Next.js 15 (App Router) web app deployed on Vercel. Users provide ingredients by typing or photographing their fridge; the client calls two server-side route handlers which invoke the Google Gemini API (`gemini-2.5-flash` via the `@google/genai` SDK) and return 3 structured recipes. There are no accounts, no database, and no persistence of any kind. The system boundary is: browser client ↔ two Next.js route handlers ↔ Gemini API. Nothing else. The previous provider, Anthropic Claude, remains available as a fully commented-out fallback in `lib/claude.ts` for an easy manual revert (see ADR-011).
 
 ```mermaid
 flowchart LR
@@ -20,11 +20,11 @@ flowchart LR
         MW["rate-limit check\nlib/rate-limit.ts (in-memory, per-IP)"]
         EXT["POST /api/extract-ingredients\n(multipart image -> string[])"]
         SUG["POST /api/suggest-recipes\n(ingredients + staples -> 3 recipes)"]
-        CL["lib/claude.ts\nAnthropic SDK singleton\nCLAUDE_MODEL env"]
+        CL["lib/claude.ts\nGoogleGenAI client singleton\nGEMINI_MODEL env (AI_MODEL)"]
         SCH["lib/schemas.ts (Zod)\nlib/types.ts (Recipe, Ingredient)"]
     end
 
-    ANTH["Anthropic Claude API\nclaude-haiku-4-5-20251001"]
+    GEM["Google Gemini API\ngemini-2.5-flash"]
 
     UI -->|photo| IMG -->|compressed image| MW
     UI -->|"ingredients + staples (JSON)"| MW
@@ -32,7 +32,7 @@ flowchart LR
     MW --> SUG
     EXT --> CL
     SUG --> CL
-    CL --> ANTH
+    CL --> GEM
     EXT --> SCH
     SUG --> SCH
 ```
@@ -49,7 +49,7 @@ app/
     suggest-recipes/route.ts       # POST — ingredients + staples → 3 recipes
 middleware.ts             # per-IP rate limit on /api/* (Task 8; see ADR-005 for placement)
 lib/
-  claude.ts               # Anthropic SDK client singleton + CLAUDE_MODEL constant (sole env access for model/key)
+  claude.ts               # GoogleGenAI client singleton + AI_MODEL constant (sole env access for model/key); Anthropic client preserved commented-out as revert path
   types.ts                # Recipe, Ingredient domain types — no UI/stateful concerns
   schemas.ts              # Zod schemas: request bodies + LLM output validation
   rate-limit.ts           # in-memory sliding-window limiter keyed by IP
@@ -73,13 +73,13 @@ Rule: `lib/types.ts` and `lib/schemas.ts` are pure — no React, no Next imports
 }
 ```
 
-  Machine codes: `invalid_request` (400), `file_too_large` (413), `unsupported_media_type` (415), `rate_limited` (429, plus `Retry-After` header, body may omit `message`), `llm_error` (502 — Claude call failed or output failed Zod validation after retry), `internal_error` (500).
+  Machine codes: `invalid_request` (400), `file_too_large` (413), `unsupported_media_type` (415), `rate_limited` (429, plus `Retry-After` header, body may omit `message`), `llm_error` (502 — LLM call failed or output failed Zod validation), `internal_error` (500).
 
 ### Endpoints
 
 | Method | Path | Auth | Request | Response (200) | Description |
 |---|---|---|---|---|---|
-| POST | `/api/extract-ingredients` | none (rate-limited) | `multipart/form-data`, field `image`: jpeg/png/webp, ≤ 5 MB | `{ "ingredients": string[] }` | Sends image to Claude vision, returns detected ingredient names |
+| POST | `/api/extract-ingredients` | none (rate-limited) | `multipart/form-data`, field `image`: jpeg/png/webp, ≤ 5 MB | `{ "ingredients": string[] }` | Sends image to the LLM (vision), returns detected ingredient names |
 | POST | `/api/suggest-recipes` | none (rate-limited) | JSON `{ "ingredients": string[], "pantryStaples": string[] }` | `{ "recipes": Recipe[] }` — exactly 3 | Generates 3 structured recipes; `missingIngredients` excludes anything in `pantryStaples` |
 
 Request bodies are validated with Zod at the route-handler entry point (the only validation site — see §11). Empty `ingredients` array → 400 `invalid_request`.
@@ -122,7 +122,7 @@ Ephemeral data rule (SPEC constraint): uploaded image Buffers live only in the r
 
 ## 4. Auth and authorization
 
-**N/A — SPEC-01 states "Auth strategy: N/A — stateless, no user accounts."** There are no protected routes, no sessions, no tokens, no roles. All routes are public. The only access control is the per-IP rate limit (§ rate limiting, Task 8). The one secret in the system, `ANTHROPIC_API_KEY`, authenticates the *server* to Anthropic, is read only inside `lib/claude.ts`, and must never appear in a client bundle (verified in build output per Definition of done). Auth arrives in SPEC-02 and is explicitly out of scope here.
+**N/A — SPEC-01 states "Auth strategy: N/A — stateless, no user accounts."** There are no protected routes, no sessions, no tokens, no roles. All routes are public. The only access control is the per-IP rate limit (§ rate limiting, Task 8). The one active secret in the system, `GEMINI_API_KEY`, authenticates the *server* to Google, is read only inside `lib/claude.ts`, and must never appear in a client bundle (verified in build output per Definition of done). Auth arrives in SPEC-02 and is explicitly out of scope here.
 
 ---
 
@@ -141,21 +141,23 @@ Confirmed in SPEC-01 decisions 5 and 10:
 
 - **Environments**: local dev (`npm run dev`, Node 20 LTS) and Vercel production. No staging environment — SPEC-01 defines only local + Vercel deploy (Task 7); Vercel preview deployments come for free with the platform and use the same env vars as production (ADR-002).
 - **Environment variables** (keys only):
-  - `ANTHROPIC_API_KEY` — required, server-only, both environments. Never `NEXT_PUBLIC_`.
-  - `CLAUDE_MODEL` — optional, defaults to `claude-haiku-4-5-20251001` in `lib/claude.ts`.
-  - `.env.local.example` (Task 1) lists both keys with no values.
-- **Central config rule**: both variables are read **only** in `lib/claude.ts`. No other file touches `process.env` for these. Any future env var gets a similar single access point.
+  - `GEMINI_API_KEY` — required, server-only, both environments. Never `NEXT_PUBLIC_`.
+  - `GEMINI_MODEL` — optional, defaults to `gemini-2.5-flash` in `lib/claude.ts` (exported as `AI_MODEL`).
+  - `ANTHROPIC_API_KEY` / `CLAUDE_MODEL` — **not currently required.** They remain documented in `.env.local.example` and README for the commented-out Anthropic fallback path in `lib/claude.ts` (ADR-011); nothing reads them while Gemini is the active provider.
+- **Central config rule**: LLM env vars are read **only** in `lib/claude.ts`. No other file touches `process.env` for these. Any future env var gets a similar single access point.
 - **Statelessness**: fully satisfied by design — no sessions to store, no file uploads persisted (images are in-memory Buffers only, discarded post-response). No object storage needed because nothing is stored.
 
 ---
 
 ## 7. External dependencies
 
-Exactly one external service (SPEC constraint: "External dependencies: Anthropic Claude API only").
+Exactly one **active** external service. (SPEC-01 said "Anthropic Claude API only"; the active provider was swapped to Google Gemini post-approval at the user's explicit request — see ADR-011. The one-LLM-provider constraint itself still holds.)
 
 | Service | Purpose | Fallback if down | Timeout | Retry policy |
 |---|---|---|---|---|
-| Anthropic Claude API (`claude-haiku-4-5-20251001` via `@anthropic-ai/sdk`) | Ingredient extraction from images (vision) and 3-recipe JSON generation | None — return 502 `llm_error`; UI shows an error state with a "Try again" action. No cached/canned recipes (would contradict statelessness). | 30 s per call (SDK client timeout; see ADR-003) | SDK default retries for transient network/5xx (max 2). Plus **one** application-level retry if Claude's output fails Zod validation — re-prompt once, then 502 (ADR-003). |
+| Google Gemini API (`gemini-2.5-flash` via `@google/genai`) | Ingredient extraction from images (vision) and 3-recipe JSON generation | None — return 502 `llm_error`; UI shows an error state with a "Try again" action. No cached/canned recipes (would contradict statelessness). | 8 s per call (`httpOptions.timeout: 8000` on the client; see ADR-003 — the same 8 s budget the Anthropic SDK's timeout option previously carried) | None configured beyond SDK defaults. **No** application-level retry on bad JSON — invalid LLM output → immediate 502 (ADR-003). |
+
+`@anthropic-ai/sdk` remains in `package.json` and the Anthropic client remains in `lib/claude.ts` — but **commented out**: it is a documented, code-level revert path, **not** a runtime fallback. The app never fails over to it automatically (ADR-011).
 
 Vercel and npm packages (zod, browser-image-compression, Tailwind, Vitest, Playwright) are platform/build dependencies, not runtime external services.
 
@@ -163,10 +165,10 @@ Vercel and npm packages (zod, browser-image-compression, Tailwind, Vitest, Playw
 
 ## 8. Async jobs
 
-**N/A — no job queue.** The only slow operations are the two Claude calls (~2–6 s, SPEC constraint), and they intentionally run inline within the HTTP request because the client is synchronously waiting for the result — this is a request/response product, not background work. Handling of the slowness:
+**N/A — no job queue.** The only slow operations are the two LLM calls (~2–6 s, SPEC constraint), and they intentionally run inline within the HTTP request because the client is synchronously waiting for the result — this is a request/response product, not background work. Handling of the slowness:
 
 - Client shows a loading/skeleton state for the duration of both calls (SPEC-mandated; Tasks 4–6).
-- The 30 s LLM timeout keeps requests within Vercel serverless function limits.
+- The 8 s LLM timeout (ADR-003) keeps requests within Vercel serverless function limits (`maxDuration = 10`).
 - No emails, file processing, PDF generation, or external syncs exist in SPEC-01, so no queue, retry counts, DLQ, or alerting are needed. If SPEC-02+ adds background work, this section gets a real queue and a new ADR.
 
 ---
@@ -205,7 +207,7 @@ No application-layer cache (no Redis, no LRU on LLM responses). ADR-004 records 
 ## 11. Security baseline
 
 - **CORS**: same-origin only. No CORS headers are added to `/api/*` — the API exists solely for the app's own frontend on the same origin, in every environment. Any cross-origin browser call is rejected by default (ADR-007).
-- **Rate limiting**: `lib/rate-limit.ts`, in-memory sliding-window keyed by client IP (`x-forwarded-for`, first hop — trustworthy on Vercel). Limit: **5 recipe generations per hour per IP**, guarding both `/api/extract-ingredients` and `/api/suggest-recipes` as a shared budget (both spend Anthropic tokens; see ADR-005 for the shared-vs-separate decision). Exceeding → `429 { "error": "rate_limited" }` + `Retry-After` (seconds until window frees). Known ceiling, stated in SPEC: state is per-serverless-instance and resets on cold start — best-effort throttling of casual abuse, not durable. A `// ponytail:` comment in the code names this ceiling and the SPEC-05 Upstash upgrade path.
+- **Rate limiting**: `lib/rate-limit.ts`, in-memory sliding-window keyed by client IP (`x-forwarded-for`, first hop — trustworthy on Vercel). Limit: **5 recipe generations per hour per IP**, guarding both `/api/extract-ingredients` and `/api/suggest-recipes` as a shared budget (both spend LLM tokens; see ADR-005 for the shared-vs-separate decision). Exceeding → `429 { "error": "rate_limited" }` + `Retry-After` (seconds until window frees). Known ceiling, stated in SPEC: state is per-serverless-instance and resets on cold start — best-effort throttling of casual abuse, not durable. A `// ponytail:` comment in the code names this ceiling and the SPEC-05 Upstash upgrade path.
 - **Input validation**: Zod, at route-handler entry points **only** — never inside `lib/claude.ts` or other helpers. Three validation sites: (1) `suggest-recipes` request body, (2) `extract-ingredients` upload (size ≤ 5 MB via `Content-Length` + actual Buffer length; MIME ∈ {image/jpeg, image/png, image/webp} checked on the file's declared type), (3) LLM JSON output from both routes (trust boundary: the LLM is untrusted input).
 - **Security headers** (set in `next.config.ts` headers()):
   - `X-Frame-Options: DENY`
@@ -213,7 +215,7 @@ No application-layer cache (no Redis, no LRU on LLM responses). ADR-004 records 
   - `Referrer-Policy: strict-origin-when-cross-origin`
   - `Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'` — `blob:`/`data:` needed for client-side image preview/compression; `'unsafe-inline'` is the pragmatic Next.js baseline (ADR-008; assumed, human should review if a stricter nonce-based CSP is wanted).
 - **HTTPS / canonical URL**: Vercel enforces HTTPS and http→https redirect platform-side. Canonical host is the bare Vercel-assigned domain; no www variant exists in v1. No custom domain is in SPEC-01 scope.
-- **Secret hygiene** (SPEC-mandated): `ANTHROPIC_API_KEY` server-side only, accessed solely in `lib/claude.ts`; Definition of done requires verifying its absence from the client bundle.
+- **Secret hygiene** (SPEC-mandated): `GEMINI_API_KEY` server-side only, accessed solely in `lib/claude.ts`; Definition of done requires verifying its absence from the client bundle. (Same rule applies to `ANTHROPIC_API_KEY` if the commented fallback is ever reactivated.)
 
 ---
 
@@ -226,7 +228,7 @@ From SPEC-01 (which sets no hard SLA); items the SPEC omitted use conservative d
 - **Core Web Vitals targets** (defaults — SPEC did not specify): LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1 on the landing page over mobile 4G.
 - **JS bundle limit** (default — SPEC did not specify): ≤ 200 KB gzipped first-load JS for `app/page.tsx`. `browser-image-compression` is dynamically imported only when the user picks photo mode, so text-mode users never download it.
 - **UI images**: the app ships essentially no static imagery (mobile-first, chip/card UI); any icons are inline SVG. User-uploaded previews use object URLs, `loading="lazy"` where offscreen.
-- **Pagination / N+1**: N/A — no database and no unbounded lists (3 recipes, short ingredient arrays). The no-query-in-a-loop rule applies trivially: there is exactly one Claude call per request, never in a loop.
+- **Pagination / N+1**: N/A — no database and no unbounded lists (3 recipes, short ingredient arrays). The no-query-in-a-loop rule applies trivially: there is exactly one LLM call per request, never in a loop.
 
 ---
 
@@ -325,6 +327,14 @@ From SPEC-01 (which sets no hard SLA); items the SPEC omitted use conservative d
 **Options considered**: (1) object type `{ name: string }` now for forward compatibility; (2) named string alias.
 **Decision**: Named alias `type Ingredient = string`. The v1 domain genuinely has no ingredient attributes; an object wrapper would be speculative structure (YAGNI). The named alias still gives SPEC-02 a single widening point.
 **Consequences**: Zero ceremony now; SPEC-02 widens the alias and follows compiler errors to every touch point.
+
+### ADR-011: Swap active LLM provider from Anthropic Claude to Google Gemini
+**Date**: 2026-07-04
+**Status**: Accepted
+**Context**: FridgeChef is a personal demo project. The user explicitly requested moving off the paid Anthropic API onto Google Gemini's free tier (AI Studio) to eliminate LLM cost. The swap was implemented, tested, security-scanned, review-approved, and merged to `main`; this ADR documents the shipped decision.
+**Options considered**: (1) stay on Anthropic Claude (paid); (2) swap to Gemini as the sole active provider, keeping the Anthropic client commented out in `lib/claude.ts` as a manual revert path; (3) build a provider-agnostic LLM abstraction supporting both.
+**Decision**: Option 2. `lib/claude.ts` now exports `AI_MODEL` (`GEMINI_MODEL` env, default `gemini-2.5-flash`) and a `GoogleGenAI` singleton (`@google/genai`, pinned 2.10.0) with `httpOptions.timeout: 8000` — the same 8 s budget ADR-003 mandated for the Anthropic SDK's timeout option. Both route handlers call `genAI.models.generateContent(...)` with `responseMimeType: "application/json"` and read `response.text`; the vision route uses `createPartFromBase64`. Option 3 was rejected as speculative generalization: a single-maintainer personal project runs exactly one provider at a time, and an abstraction layer would be maintained for zero active consumers. `@anthropic-ai/sdk` stays installed so reverting requires no `npm install`.
+**Consequences**: Reverting to Anthropic is a manual, deliberate action — uncomment the client block in `lib/claude.ts` and restore the Anthropic call shape in both route files — not a runtime toggle or automatic failover. Error contract, Zod validation, `maxDuration = 10`, no-store caching, structured logging, and PII exclusion are unchanged. Gemini free-tier rate/quota limits (Google AI Studio) are the operator's responsibility to monitor — the app's per-IP rate limiter (ADR-005) now protects the Gemini quota rather than the Anthropic budget. Easier: zero LLM cost. Harder: free-tier quotas may throttle under load, and ADR-003's latency rationale (Haiku response times) now applies analogously to `gemini-2.5-flash` rather than exactly.
 
 ---
 
