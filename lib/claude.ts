@@ -6,7 +6,10 @@ export const AI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 
 export const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: { timeout: 8000 }, // ADR-003: Vercel Hobby 10s function limit
+  // ADR-003: Gemini enforces a 10s minimum deadline, so 8s was rejected outright
+  // (400 INVALID_ARGUMENT). Vercel Hobby actually supports maxDuration up to 60s
+  // (not just the 10s default), so 15s gives margin above Gemini's floor.
+  httpOptions: { timeout: 15000 },
 });
 
 // --- Previous provider: Anthropic Claude (commented out, not deleted) ---

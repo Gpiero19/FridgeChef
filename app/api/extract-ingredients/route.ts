@@ -3,8 +3,9 @@ import { ApiError, createPartFromBase64 } from "@google/genai";
 import { genAI, AI_MODEL } from "../../../lib/claude";
 import { IngredientsArraySchema } from "../../../lib/schemas";
 
-// ADR-003: Vercel Hobby plan 10s function limit.
-export const maxDuration = 10;
+// ADR-003: Vercel Hobby supports maxDuration up to 60s. 20s gives 5s of headroom
+// beyond the Gemini client's 15s SDK timeout for JSON parsing and validation.
+export const maxDuration = 20;
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -99,6 +100,10 @@ export async function POST(request: Request) {
       config: {
         responseMimeType: "application/json",
         maxOutputTokens: 1024,
+        // gemini-2.5-flash spends output-token budget on internal reasoning by default,
+        // which can silently truncate structured output; disabled since this task needs
+        // plain JSON generation, not reasoning.
+        thinkingConfig: { thinkingBudget: 0 },
       },
     });
     rawText = response.text ?? "";
