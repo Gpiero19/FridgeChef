@@ -1,8 +1,8 @@
 # FridgeChef
 
 A stateless, mobile-first web app that turns a photo of your fridge or pantry
-into recipe suggestions. Upload an image, an LLM (Claude) identifies the
-ingredients, then suggests recipes you can make with them. Nothing is
+into recipe suggestions. Upload an image, an LLM (Google Gemini) identifies
+the ingredients, then suggests recipes you can make with them. Nothing is
 persisted — no accounts, no database, no stored images.
 
 Built with Next.js 15 (App Router) + TypeScript, deployed on Vercel.
@@ -12,18 +12,24 @@ Built with Next.js 15 (App Router) + TypeScript, deployed on Vercel.
 ```bash
 npm install
 cp .env.local.example .env.local
-# edit .env.local and set ANTHROPIC_API_KEY
+# edit .env.local and set GEMINI_API_KEY
 npm run dev
 ```
 
 App runs at http://localhost:3000.
 
+Get a free Gemini API key at https://aistudio.google.com.
+
 ## Required environment variables
 
 | Variable | Required | Default | Notes |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | — | Server-side only. Never commit it, never expose it to the client. |
-| `CLAUDE_MODEL` | No | `claude-haiku-4-5-20251001` | Override to use a different Claude model. |
+| `GEMINI_API_KEY` | Yes | — | Server-side only. Never commit it, never expose it to the client. Get one free at https://aistudio.google.com. |
+| `GEMINI_MODEL` | No | `gemini-2.5-flash` | Override to use a different Gemini model. |
+
+`ANTHROPIC_API_KEY`/`CLAUDE_MODEL` are present in `.env.local.example` for an
+easy revert to the previous provider (see `lib/claude.ts`), but are not
+required for the app to run today.
 
 Env vars are read only through the central config module (see
 `ARCHITECTURE.md`) — never accessed directly via `process.env` elsewhere in
@@ -43,8 +49,8 @@ first.
 ## Deployment (Vercel)
 
 1. Import the repo into Vercel.
-2. In the Vercel dashboard, set `ANTHROPIC_API_KEY` (and optionally
-   `CLAUDE_MODEL`) under Project Settings → Environment Variables. Never
+2. In the Vercel dashboard, set `GEMINI_API_KEY` (and optionally
+   `GEMINI_MODEL`) under Project Settings → Environment Variables. Never
    commit real values to the repo.
 3. Vercel runs the standard Next.js build/start (`next build` / `next
    start`) — no custom build command needed.

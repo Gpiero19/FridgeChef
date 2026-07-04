@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { anthropic, CLAUDE_MODEL } from "../../../lib/claude";
+import { createPartFromBase64 } from "@google/genai";
+import { genAI, AI_MODEL } from "../../../lib/claude";
 import { IngredientsArraySchema } from "../../../lib/schemas";
 
 // ADR-003: Vercel Hobby plan 10s function limit.
@@ -89,26 +90,18 @@ export async function POST(request: Request) {
 
   let rawText: string;
   try {
-    const message = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mediaType, data: base64Data },
-            },
-            { type: "text", text: PROMPT },
-          ],
-        },
-      ],
+    const imagePart = createPartFromBase64(base64Data, mediaType);
+    const response = await genAI.models.generateContent({
+      model: AI_MODEL,
+      contents: [{ role: "user", parts: [{ text: PROMPT }, imagePart] }],
+      config: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 1024,
+      },
     });
-    const firstBlock = message.content[0];
-    rawText = firstBlock && firstBlock.type === "text" ? firstBlock.text : "";
+    rawText = response.text ?? "";
   } catch {
-    // Never surface raw Claude/SDK errors to the client.
+    // Never surface raw Gemini/SDK errors to the client.
     log(502, requestId, Date.now() - startedAt);
     return errorResponse(502, "llm_error", "Failed to extract ingredients. Please try again.");
   }

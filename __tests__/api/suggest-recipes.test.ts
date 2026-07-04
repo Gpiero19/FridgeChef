@@ -11,17 +11,15 @@ const validRecipe = {
 };
 
 function mockCreate(text: string) {
-  return vi.fn().mockResolvedValue({
-    content: [{ type: "text", text }],
-  });
+  return vi.fn().mockResolvedValue({ text });
 }
 
 vi.mock("../../lib/claude", () => ({
-  anthropic: { messages: { create: vi.fn() } },
-  CLAUDE_MODEL: "claude-haiku-4-5-20251001",
+  genAI: { models: { generateContent: vi.fn() } },
+  AI_MODEL: "gemini-2.5-flash",
 }));
 
-import { anthropic } from "../../lib/claude";
+import { genAI } from "../../lib/claude";
 import { POST } from "../../app/api/suggest-recipes/route";
 
 function makeRequest(body: unknown) {
@@ -33,7 +31,7 @@ function makeRequest(body: unknown) {
 
 describe("POST /api/suggest-recipes", () => {
   it("returns 200 with 3 validated recipes for a valid body", async () => {
-    (anthropic.messages.create as ReturnType<typeof vi.fn>).mockImplementation(
+    (genAI.models.generateContent as ReturnType<typeof vi.fn>).mockImplementation(
       mockCreate(JSON.stringify([validRecipe, validRecipe, validRecipe])),
     );
 
@@ -49,7 +47,7 @@ describe("POST /api/suggest-recipes", () => {
   });
 
   it("returns 502 llm_error when Claude returns malformed JSON", async () => {
-    (anthropic.messages.create as ReturnType<typeof vi.fn>).mockImplementation(
+    (genAI.models.generateContent as ReturnType<typeof vi.fn>).mockImplementation(
       mockCreate("not valid json{{{"),
     );
 

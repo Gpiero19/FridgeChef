@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { anthropic, CLAUDE_MODEL } from "../../../lib/claude";
+import { genAI, AI_MODEL } from "../../../lib/claude";
 import { recipeArraySchema, suggestRecipesRequestSchema } from "../../../lib/schemas";
 
 // ADR-003: Vercel Hobby plan 10s function limit.
@@ -78,15 +78,17 @@ export async function POST(request: Request) {
 
   let rawText: string;
   try {
-    const message = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 2048,
-      messages: [{ role: "user", content: buildPrompt(ingredients, pantryStaples) }],
+    const response = await genAI.models.generateContent({
+      model: AI_MODEL,
+      contents: buildPrompt(ingredients, pantryStaples),
+      config: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 2048,
+      },
     });
-    const firstBlock = message.content[0];
-    rawText = firstBlock && firstBlock.type === "text" ? firstBlock.text : "";
+    rawText = response.text ?? "";
   } catch {
-    // Never surface raw Claude/SDK errors to the client.
+    // Never surface raw Gemini/SDK errors to the client.
     log(502, requestId, Date.now() - startedAt);
     return errorResponse(502, "llm_error", "Failed to generate recipes. Please try again.");
   }
