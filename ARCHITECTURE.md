@@ -155,7 +155,7 @@ Exactly one **active** external service. (SPEC-01 said "Anthropic Claude API onl
 
 | Service | Purpose | Fallback if down | Timeout | Retry policy |
 |---|---|---|---|---|
-| Google Gemini API (`gemini-2.5-flash` via `@google/genai`) | Ingredient extraction from images (vision) and 3-recipe JSON generation | None — return 502 `llm_error`; UI shows an error state with a "Try again" action. No cached/canned recipes (would contradict statelessness). | 8 s per call (`httpOptions.timeout: 8000` on the client; see ADR-003 — the same 8 s budget the Anthropic SDK's timeout option previously carried) | None configured beyond SDK defaults. **No** application-level retry on bad JSON — invalid LLM output → immediate 502 (ADR-003). |
+| Google Gemini API (`gemini-2.5-flash` via `@google/genai`) | Ingredient extraction from images (vision) and 3-recipe JSON generation | None — return 502 `llm_error`; UI shows an error state with a "Try again" action. No cached/canned recipes (would contradict statelessness). | 15 s per call (`httpOptions.timeout: 15000`; see ADR-012 — Gemini enforces a 10 s minimum deadline, ADR-003's original 8 s assumption was below this floor) | None configured beyond SDK defaults. **No** application-level retry on bad JSON — invalid LLM output → immediate 502 (ADR-003). |
 
 `@anthropic-ai/sdk` remains in `package.json` and the Anthropic client remains in `lib/claude.ts` — but **commented out**: it is a documented, code-level revert path, **not** a runtime fallback. The app never fails over to it automatically (ADR-011).
 
@@ -168,7 +168,7 @@ Vercel and npm packages (zod, browser-image-compression, Tailwind, Vitest, Playw
 **N/A — no job queue.** The only slow operations are the two LLM calls (~2–6 s, SPEC constraint), and they intentionally run inline within the HTTP request because the client is synchronously waiting for the result — this is a request/response product, not background work. Handling of the slowness:
 
 - Client shows a loading/skeleton state for the duration of both calls (SPEC-mandated; Tasks 4–6).
-- The 8 s LLM timeout (ADR-003) keeps requests within Vercel serverless function limits (`maxDuration = 10`).
+- The 15 s LLM timeout (ADR-012, correcting ADR-003's original 8 s value) keeps requests within the routes' Vercel serverless function budget (`maxDuration = 20` on both routes — 5 s of headroom beyond the SDK timeout, safely under Vercel Hobby's real 60 s ceiling).
 - No emails, file processing, PDF generation, or external syncs exist in SPEC-01, so no queue, retry counts, DLQ, or alerting are needed. If SPEC-02+ adds background work, this section gets a real queue and a new ADR.
 
 ---
@@ -272,6 +272,8 @@ From SPEC-01 (which sets no hard SLA); items the SPEC omitted use conservative d
 **Rationale**: Haiku 4.5 typically responds in 1-3s. 8s covers edge cases without hitting the Vercel ceiling.
 **Consequences**: Upgrade path: moving to Vercel Pro unlocks 60s maxDuration — restore retry logic at that point (SPEC-02 or later).
 
+**Note (see ADR-012):** the "Vercel Hobby = 10s hard limit" premise in this ADR was later found to be incorrect — Hobby supports up to 60s `maxDuration` (300s with Fluid Compute); 10s is only the default. The specific 8s/10s values here are superseded, and the 8s client timeout caused a production outage after the Gemini swap (ADR-011) because Gemini enforces a 10s minimum deadline. See ADR-012 for the corrected values. The no-retry-on-bad-JSON decision remains in force.
+
 ### ADR-004: No application-layer caching of LLM responses
 **Date**: 2026-07-03
 **Status**: Accepted
@@ -335,6 +337,14 @@ From SPEC-01 (which sets no hard SLA); items the SPEC omitted use conservative d
 **Options considered**: (1) stay on Anthropic Claude (paid); (2) swap to Gemini as the sole active provider, keeping the Anthropic client commented out in `lib/claude.ts` as a manual revert path; (3) build a provider-agnostic LLM abstraction supporting both.
 **Decision**: Option 2. `lib/claude.ts` now exports `AI_MODEL` (`GEMINI_MODEL` env, default `gemini-2.5-flash`) and a `GoogleGenAI` singleton (`@google/genai`, pinned 2.10.0) with `httpOptions.timeout: 8000` — the same 8 s budget ADR-003 mandated for the Anthropic SDK's timeout option. Both route handlers call `genAI.models.generateContent(...)` with `responseMimeType: "application/json"` and read `response.text`; the vision route uses `createPartFromBase64`. Option 3 was rejected as speculative generalization: a single-maintainer personal project runs exactly one provider at a time, and an abstraction layer would be maintained for zero active consumers. `@anthropic-ai/sdk` stays installed so reverting requires no `npm install`.
 **Consequences**: Reverting to Anthropic is a manual, deliberate action — uncomment the client block in `lib/claude.ts` and restore the Anthropic call shape in both route files — not a runtime toggle or automatic failover. Error contract, Zod validation, `maxDuration = 10`, no-store caching, structured logging, and PII exclusion are unchanged. Gemini free-tier rate/quota limits (Google AI Studio) are the operator's responsibility to monitor — the app's per-IP rate limiter (ADR-005) now protects the Gemini quota rather than the Anthropic budget. Easier: zero LLM cost. Harder: free-tier quotas may throttle under load, and ADR-003's latency rationale (Haiku response times) now applies analogously to `gemini-2.5-flash` rather than exactly.
+
+### ADR-012: Correct Vercel Hobby duration ceiling and fix Gemini timeout/thinking-token bugs
+**Date**: 2026-07-04
+**Status**: Accepted
+**Context**: ADR-003 was premised on Vercel Hobby having a hard 10 s serverless function limit. That premise is factually wrong: verified against current official Vercel documentation, Hobby's *default* `maxDuration` is 10 s but it is explicitly configurable up to **60 s** (up to 300 s on Fluid Compute-enabled projects). The mistaken ceiling forced an 8 s SDK client timeout, which caused a real production outage after the Gemini swap (ADR-011): Gemini's API enforces a hard **minimum 10 s call deadline**, so the 8 s client deadline was rejected outright on every call with 400 `INVALID_ARGUMENT` ("Manually set deadline 8s is too short. Minimum allowed deadline is 10s") — both API routes failed 100% of the time. The fix shipped through the full gate pipeline (task → test → security → review) and is merged to `main`; this ADR documents it.
+**Options considered**: (1) keep the 8 s/10 s values and find a workaround (e.g. omit the client deadline entirely) — rejected: it preserves a false premise and loses explicit timeout control; (2) correct the ceiling assumption and raise both values — chosen; there was no real debate, this is a factual correction.
+**Decision**: In `lib/claude.ts`, raise `httpOptions.timeout` from `8000` to `15000` (15 s — comfortably above Gemini's 10 s floor). In both route handlers (`app/api/suggest-recipes/route.ts`, `app/api/extract-ingredients/route.ts`), raise `export const maxDuration` from `10` to `20` (5 s of headroom beyond the SDK timeout for JSON parsing, Zod validation, and network overhead — safely within Hobby's real 60 s ceiling). The same fix also added `thinkingConfig: { thinkingBudget: 0 }` to both routes' `generateContent` config — a **separate, unrelated bug** fixed in the same commit: `gemini-2.5-flash` by default spends `maxOutputTokens` budget on internal reasoning tokens, which was silently truncating the JSON output. That is an output-budget issue, not a timeout/duration issue — two distinct root causes fixed together.
+**Consequences**: Both API routes work again (previously 100% failure). Hobby's real ceiling (60 s / 300 s with Fluid Compute) leaves ample further headroom if timeouts ever need raising again — ADR-003's "upgrade to Pro to unlock 60s" upgrade path is moot. With thinking disabled, Gemini's full output-token budget goes to actual JSON instead of invisible reasoning, making responses more complete and reliable beyond just fixing the deadline error. ADR-003's specific 8 s/10 s numbers are superseded (see note appended there); its no-retry-on-bad-JSON decision and ADR-011's provider choice are unchanged. Trade-off accepted: a genuinely slow LLM call can now occupy a function for up to 20 s instead of 10 s — negligible at this traffic level and bounded by the 15 s SDK timeout.
 
 ---
 
