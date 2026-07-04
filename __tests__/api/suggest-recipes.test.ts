@@ -63,6 +63,40 @@ describe("POST /api/suggest-recipes", () => {
     });
   });
 
+  it("returns 502 llm_error when the Gemini call throws", async () => {
+    (genAI.models.generateContent as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("network failure"),
+    );
+
+    const res = await POST(
+      makeRequest({ ingredients: ["pasta"], pantryStaples: [] }),
+    );
+
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json).toEqual({
+      error: "llm_error",
+      message: expect.any(String),
+    });
+  });
+
+  it("returns 502 llm_error when Claude returns valid JSON that fails schema validation", async () => {
+    (genAI.models.generateContent as ReturnType<typeof vi.fn>).mockImplementation(
+      mockCreate(JSON.stringify([validRecipe])),
+    );
+
+    const res = await POST(
+      makeRequest({ ingredients: ["pasta"], pantryStaples: [] }),
+    );
+
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json).toEqual({
+      error: "llm_error",
+      message: expect.any(String),
+    });
+  });
+
   it("returns 400 invalid_request when body is missing", async () => {
     const req = new Request("http://localhost/api/suggest-recipes", {
       method: "POST",

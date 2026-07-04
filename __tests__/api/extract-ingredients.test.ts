@@ -78,4 +78,34 @@ describe("POST /api/extract-ingredients", () => {
       message: expect.any(String),
     });
   });
+
+  it("returns 502 llm_error when the Gemini call throws", async () => {
+    (genAI.models.generateContent as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("network failure"),
+    );
+
+    const res = await POST(makeRequest(makeImageFile(1024, "image/jpeg")));
+
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json).toEqual({
+      error: "llm_error",
+      message: expect.any(String),
+    });
+  });
+
+  it("returns 502 llm_error when Claude returns valid JSON that fails schema validation", async () => {
+    (genAI.models.generateContent as ReturnType<typeof vi.fn>).mockImplementation(
+      mockCreate(JSON.stringify({ notIngredients: true })),
+    );
+
+    const res = await POST(makeRequest(makeImageFile(1024, "image/jpeg")));
+
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json).toEqual({
+      error: "llm_error",
+      message: expect.any(String),
+    });
+  });
 });

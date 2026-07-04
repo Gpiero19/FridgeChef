@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createPartFromBase64 } from "@google/genai";
+import { ApiError, createPartFromBase64 } from "@google/genai";
 import { genAI, AI_MODEL } from "../../../lib/claude";
 import { IngredientsArraySchema } from "../../../lib/schemas";
 
@@ -22,8 +22,9 @@ function errorResponse(
   );
 }
 
-function log(status: number, requestId: string, durationMs: number) {
+function log(status: number, requestId: string, durationMs: number, errorDetail?: string) {
   // ponytail: no image/ingredient content in the log line (ARCHITECTURE.md §10 PII rule).
+  // errorDetail is operational diagnostics only (SDK error message, parse/validation summary).
   console.log(
     JSON.stringify({
       timestamp: new Date().toISOString(),
@@ -32,6 +33,7 @@ function log(status: number, requestId: string, durationMs: number) {
       requestId,
       status,
       durationMs,
+      ...(errorDetail ? { errorDetail } : {}),
     }),
   );
 }
@@ -100,9 +102,15 @@ export async function POST(request: Request) {
       },
     });
     rawText = response.text ?? "";
-  } catch {
-    // Never surface raw Gemini/SDK errors to the client.
-    log(502, requestId, Date.now() - startedAt);
+  } catch (err) {
+    // Never surface raw Gemini/SDK errors to the client — but do log the reason server-side.
+    const errorDetail =
+      err instanceof ApiError
+        ? `ApiError(status=${err.status}): ${err.message}`
+        : err instanceof Error
+          ? err.message
+          : "unknown error";
+    log(502, requestId, Date.now() - startedAt, errorDetail);
     return errorResponse(502, "llm_error", "Failed to extract ingredients. Please try again.");
   }
 
@@ -111,13 +119,23 @@ export async function POST(request: Request) {
     json = JSON.parse(rawText);
   } catch {
     // ADR-003: no retry on bad JSON — return the error immediately.
-    log(502, requestId, Date.now() - startedAt);
+    log(
+      502,
+      requestId,
+      Date.now() - startedAt,
+      `JSON.parse failed, rawText length=${rawText.length}`,
+    );
     return errorResponse(502, "llm_error", "Failed to extract ingredients. Please try again.");
   }
 
   const parsedIngredients = IngredientsArraySchema.safeParse(json);
   if (!parsedIngredients.success) {
-    log(502, requestId, Date.now() - startedAt);
+    // ponytail: path+code only, never issue.message, for consistency with suggest-recipes
+    // even though this schema has no enum fields today (defense-in-depth if one's added later).
+    const issuesSummary = parsedIngredients.error.issues
+      .map((issue) => `${issue.path.join(".")}: ${issue.code}`)
+      .join("; ");
+    log(502, requestId, Date.now() - startedAt, issuesSummary);
     return errorResponse(502, "llm_error", "Failed to extract ingredients. Please try again.");
   }
 

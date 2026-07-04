@@ -4,6 +4,11 @@ import type { NextConfig } from "next";
 // lib/rate-limit.ts and route handlers per ARCHITECTURE.md §11.
 const nextConfig: NextConfig = {
   async headers() {
+    // ponytail: next dev's hot-reload runtime uses eval(); prod CSP stays strict.
+    const scriptSrc =
+      process.env.NODE_ENV !== "production"
+        ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        : "script-src 'self' 'unsafe-inline'";
     return [
       {
         source: "/:path*",
@@ -13,8 +18,7 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           {
             key: "Content-Security-Policy",
-            value:
-              "default-src 'self'; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'",
+            value: `default-src 'self'; img-src 'self' data: blob:; ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src 'self'`,
           },
         ],
       },
