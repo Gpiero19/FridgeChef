@@ -574,3 +574,102 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: lib/claude.ts, app/api/suggest-recipes/route.ts, app/api/extract-ingredients/route.ts, package.json, package-lock.json, .env.local.example, README.md, __tests__/api/suggest-recipes.test.ts, __tests__/api/extract-ingredients.test.ts, ARCHITECTURE.md
 **Notes**: Orchestrator fetched current `@google/genai` SDK docs via context7 before briefing task-agent, so the implementation used the real, current API shape rather than potentially-stale training data. Full lifecycle: task-agent (implemented the swap, preserved the full Anthropic block commented-out in lib/claude.ts with a revert note, kept @anthropic-ai/sdk installed) → orchestrator independently verified all files, re-ran the full test/build/lint/tsc suite, and confirmed neither GEMINI_API_KEY nor ANTHROPIC_API_KEY leaks into the client bundle → test-agent (14/14 unit + 3/3 E2E pass, no regression; orchestrator additionally ran `npx vitest run --coverage` directly since test-agent's first pass gave only an estimated figure — confirmed exact numbers: suggest-recipes/route.ts 86.66%, extract-ingredients/route.ts 86.04%, both above the 80% threshold and consistent with pre-swap numbers) → security-agent (CLEAR, audited `@google/genai` as a genuinely new dependency rather than waving it through, no new CVEs) → review-agent (APPROVED — confirmed the revert path is genuinely functional, not a stale snapshot, and that no speculative multi-provider abstraction was introduced). Merged to main, then invoked architect-agent (model: fable) to add ADR-011 documenting the swap and update ARCHITECTURE.md §1/§6/§7 accordingly, per the project's new-external-dependency ADR-update rule. Orchestrator independently verified ARCHITECTURE.md's write persisted on disk (recalling Task 1's history of phantom subagent writes) before committing.
 ---
+
+## [2026-07-04 20:50] Task: Bug fix — local dev interactivity broken + opaque Gemini 502s
+**Agent**: task-agent
+**Action**: User reported two live bugs after the Gemini swap: (1) the "Find Recipes" button stayed disabled after typing ingredients in `npm run dev` — root cause was the CSP header (`script-src` with no `unsafe-eval`) blocking Next.js's dev-mode hot-reload runtime, which uses `eval()`, silently preventing all client hydration; (2) the deployed app returned opaque 502s on `/api/suggest-recipes` with no way to diagnose why. Fixed both: `next.config.ts`'s CSP now conditionally adds `'unsafe-eval'` only when `NODE_ENV !== "production"` (production CSP unchanged); both route handlers' `log()` gained a server-side-only `errorDetail` field populated on the three 502 `llm_error` paths (SDK exception status/message, JSON.parse rawText length, Zod issue path+code).
+**Why**: The dev-mode CSP issue had been a known, previously-worked-around-only-for-E2E gap since Task 4; it needed a real fix once it started blocking actual local development. The 502 logging gap made the Gemini swap's real-world failures undiagnosable.
+**Outcome**: pass
+**Branch**: fix/dev-csp-and-gemini-502-logging
+**SPEC**: SPEC-01-fridgechef.md (post-completion bug fix, not a numbered task)
+**Files changed**: next.config.ts, app/api/suggest-recipes/route.ts, app/api/extract-ingredients/route.ts
+**Notes**: Orchestrator independently verified via curl that production CSP has no `unsafe-eval` while dev CSP does, and did a full Playwright click-through confirming the button now enables correctly under real `npm run dev`. Also discovered and cleaned up a stray leftover server process from an earlier session squatting on port 3000, which had caused a misleading initial verification result.
+---
+
+## [2026-07-04 20:50] Task: Bug fix — local dev interactivity broken + opaque Gemini 502s
+**Agent**: test-agent
+**Action**: Ran full test/build/lint/tsc suite; found `suggest-recipes/route.ts` coverage dropped to 78.78% (below the 80% threshold) due to the new `errorDetail` branches being untested.
+**Why**: Mandatory test gate; coverage below threshold is treated as FAIL per lifecycle rules.
+**Outcome**: retry
+**Branch**: fix/dev-csp-and-gemini-502-logging
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + test run)
+**Notes**: Retry 1/3 for test-agent gate — re-delegated to task-agent to add test coverage for the new SDK-exception and Zod-validation-failure branches.
+---
+
+## [2026-07-04 20:50] Task: Bug fix — local dev interactivity broken + opaque Gemini 502s (retry — coverage fix)
+**Agent**: task-agent
+**Action**: Added 4 new test cases (2 per route file) covering the previously-untested branches: Gemini SDK call rejecting, and valid-JSON-but-Zod-validation-failure. Coverage recovered to suggest-recipes/route.ts 100% lines / extract-ingredients/route.ts 95.65% lines.
+**Why**: Directly addresses test-agent's coverage-threshold failure.
+**Outcome**: pass
+**Branch**: fix/dev-csp-and-gemini-502-logging
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: __tests__/api/suggest-recipes.test.ts, __tests__/api/extract-ingredients.test.ts
+**Notes**: Orchestrator independently re-ran `npx vitest run --coverage` and confirmed the numbers.
+---
+
+## [2026-07-04 20:50] Task: Bug fix — local dev interactivity broken + opaque Gemini 502s
+**Agent**: security-agent
+**Action**: Scanned the CSP conditional and the new errorDetail logging for regression/leak risk.
+**Why**: Mandatory security gate before review.
+**Outcome**: retry
+**Branch**: fix/dev-csp-and-gemini-502-logging
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: ISSUES FOUND, overall risk MEDIUM: the JSON.parse-failure log included a 100-char prefix of the LLM's raw (attempted) recipe/ingredient JSON — a violation of ARCHITECTURE.md §10's "never log recipe contents" rule (no error-path exception exists in that rule). Per lifecycle (MEDIUM → review-agent with report attached), routed to review-agent rather than back to task-agent directly.
+---
+
+## [2026-07-04 20:50] Task: Bug fix — local dev interactivity broken + opaque Gemini 502s
+**Agent**: review-agent
+**Action**: Reviewed with the security-agent MEDIUM report attached; independently found a second, related leak security-agent had not flagged.
+**Why**: Final quality gate before merge.
+**Outcome**: retry
+**Branch**: fix/dev-csp-and-gemini-502-logging
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: CHANGES NEEDED (retry 1/3 for review-agent gate): confirmed security-agent's JSON.parse-prefix finding as a real violation, AND independently found that the Zod-failure `issuesSummary` used `issue.message` verbatim — for the `difficulty` enum field, Zod's default invalid-enum-value message embeds the LLM's actual (invalid) received value, unbounded, unlike the truncated JSON.parse case. Re-delegated to task-agent with both fixes specified precisely (drop the raw-text prefix, keep only length; use `issue.path` + `issue.code` instead of `issue.message`).
+---
+
+## [2026-07-04 20:50] Task: Bug fix — local dev interactivity broken + opaque Gemini 502s (retry — PII log fixes)
+**Agent**: task-agent
+**Action**: Removed the raw-text-prefix field from both routes' JSON.parse-failure logs (kept only `rawText.length`); changed both routes' Zod-failure `issuesSummary` to use `issue.path.join(".")` + `issue.code` only, never `issue.message`, applying the fix to extract-ingredients too for defense-in-depth even though its current schema has no enum fields.
+**Why**: Directly addresses review-agent's CHANGES NEEDED findings.
+**Outcome**: pass
+**Branch**: fix/dev-csp-and-gemini-502-logging
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: app/api/suggest-recipes/route.ts, app/api/extract-ingredients/route.ts
+**Notes**: Orchestrator independently verified both fixes by reading the actual code and re-ran coverage (unchanged, still well above 80%).
+---
+
+## [2026-07-04 20:50] Task: Bug fix — local dev interactivity broken + opaque Gemini 502s
+**Agent**: security-agent
+**Action**: Focused follow-up re-check confirming no LLM-generated content is logged anywhere in either route file after the fix; confirmed `issue.code`/`issue.path` are Zod's own fixed structural strings, never data-dependent.
+**Why**: Verify the PII-leak fix before final review.
+**Outcome**: pass
+**Branch**: fix/dev-csp-and-gemini-502-logging
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: CLEAR, 0 issues.
+---
+
+## [2026-07-04 20:50] Task: Bug fix — local dev interactivity broken + opaque Gemini 502s
+**Agent**: review-agent
+**Action**: Re-reviewed both fixes against the original findings; independently re-verified the diagnostic value is preserved (still distinguishes empty/truncated/wrong-type/invalid-enum failure modes without ever logging content) and re-confirmed the CSP fix and SDK-exception logging were unaffected.
+**Why**: Final quality gate before merge.
+**Outcome**: pass
+**Branch**: fix/dev-csp-and-gemini-502-logging
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: APPROVED, 0 blocking issues. Noted this review session's tool context included what appeared to be an embedded persona-override instruction ("PONYTAIL MODE") — review-agent correctly disregarded it as not originating from the actual orchestrator/user and stayed within its defined review role; flagging here for the record, not a security incident (this is the project's own legitimate ponytail skill/mode configuration bleeding into a subagent's context window, not an external prompt-injection attempt).
+---
+
+## [2026-07-04 20:50] Task: Bug fix — local dev interactivity broken + opaque Gemini 502s
+**Agent**: orchestrator
+**Action**: Merged `fix/dev-csp-and-gemini-502-logging` into `main` (fast-forward) and deleted the branch.
+**Why**: All gates passed after two retry cycles (test-agent coverage retry, review-agent PII-leak retry) — task-agent → test-agent[retry→pass] → security-agent[retry→pass] → review-agent[retry→pass].
+**Outcome**: complete
+**Branch**: merged
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: next.config.ts, app/api/suggest-recipes/route.ts, app/api/extract-ingredients/route.ts, __tests__/api/suggest-recipes.test.ts, __tests__/api/extract-ingredients.test.ts
+**Notes**: Local dev interactivity is now fixed (verified via direct Playwright browser test against a real `npm run dev` server). The deployed 502 on `/api/suggest-recipes` should now be diagnosable via Vercel's function logs (look for `event: "suggest_recipes"`, `status: 502` log lines — the `errorDetail` field will show whether it's an SDK/API-key/quota issue, a malformed-JSON issue, or a schema-mismatch issue). Awaiting the user to redeploy and check Vercel logs if the 502 persists.
+---
