@@ -673,3 +673,58 @@ except the last 20 to `AGENT_LOG_ARCHIVE.md` and adds an archive notice at the t
 **Files changed**: next.config.ts, app/api/suggest-recipes/route.ts, app/api/extract-ingredients/route.ts, __tests__/api/suggest-recipes.test.ts, __tests__/api/extract-ingredients.test.ts
 **Notes**: Local dev interactivity is now fixed (verified via direct Playwright browser test against a real `npm run dev` server). The deployed 502 on `/api/suggest-recipes` should now be diagnosable via Vercel's function logs (look for `event: "suggest_recipes"`, `status: 502` log lines — the `errorDetail` field will show whether it's an SDK/API-key/quota issue, a malformed-JSON issue, or a schema-mismatch issue). Awaiting the user to redeploy and check Vercel logs if the 502 persists.
 ---
+
+## [2026-07-04 21:35] Task: Bug fix — Gemini timeout below API minimum + thinking-token truncation
+**Agent**: orchestrator
+**Action**: The new `errorDetail` logging from the prior fix immediately paid off — the user shared the exact log line from a local 502, revealing `ApiError(status=400): "Manually set deadline 8s is too short. Minimum allowed deadline is 10s."`. Root cause: `lib/claude.ts`'s Gemini client timeout (8000ms, a leftover Anthropic/Vercel-Hobby-10s assumption from ADR-003) was below Gemini's hard 10-second minimum deadline — every single call to both API routes had been failing since the Gemini swap, both locally and (almost certainly) in the deployed app. Orchestrator verified current Vercel docs via context7 before fixing: Hobby plan supports `maxDuration` up to 60s (300s with Fluid Compute), not the 10s ADR-003 assumed — giving real headroom to fix this properly rather than working around it.
+**Why**: The prior fix's diagnostic logging directly enabled root-causing this within one exchange instead of guessing.
+**Outcome**: pass
+**Branch**: fix/gemini-timeout-below-minimum
+**SPEC**: SPEC-01-fridgechef.md (post-completion bug fix)
+**Files changed**: lib/claude.ts, app/api/suggest-recipes/route.ts, app/api/extract-ingredients/route.ts
+**Notes**: task-agent's own verification (using a real GEMINI_API_KEY present in .env.local) surfaced a SECOND, distinct bug after the timeout fix: `gemini-2.5-flash` spends part of its `maxOutputTokens` budget on internal "thinking" tokens by default — for the recipe prompt this consumed 1838 of 2048 tokens before any visible output, truncating the JSON response (`finishReason: "MAX_TOKENS"`) and still failing with a 502. Orchestrator independently reproduced BOTH bugs directly against the real Gemini API with throwaway scratch scripts (deleted after use, never committed) to confirm root cause before delegating the fix, then delegated the `thinkingConfig: { thinkingBudget: 0 }` fix to task-agent, who verified it via the same real-API method (finishReason changed to "STOP", valid JSON, JSON.parse succeeded) plus a full end-to-end curl against a real production build (`npm run build && npm run start`) returning HTTP 200 with 3 complete recipes. Orchestrator independently re-ran this exact end-to-end curl test personally and confirmed the same success.
+---
+
+## [2026-07-04 21:35] Task: Bug fix — Gemini timeout below API minimum + thinking-token truncation
+**Agent**: test-agent
+**Action**: Ran full test/build/lint/tsc/E2E suite plus coverage check.
+**Why**: Mandatory test gate before security-agent.
+**Outcome**: pass
+**Branch**: fix/gemini-timeout-below-minimum
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + test run)
+**Notes**: 21/21 tests pass (18 unit + 3 E2E), no regression. Coverage: suggest-recipes/route.ts 100% lines, extract-ingredients/route.ts 95.65% lines, both well above the 80% threshold.
+---
+
+## [2026-07-04 21:35] Task: Bug fix — Gemini timeout below API minimum + thinking-token truncation
+**Agent**: security-agent
+**Action**: Scanned the three config-value changes (timeout, maxDuration, thinkingConfig) for any security implication.
+**Why**: Mandatory security gate before review.
+**Outcome**: pass
+**Branch**: fix/gemini-timeout-below-minimum
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only + npm audit)
+**Notes**: CLEAR, 0 issues. Confirmed the maxDuration increase doesn't worsen the rate-limiter's exposure window (5/hour per-IP limit is unaffected by function duration), and thinkingConfig is a pure output-budget setting unrelated to any safety/content-moderation config. No secrets/deps touched.
+---
+
+## [2026-07-04 21:35] Task: Bug fix — Gemini timeout below API minimum + thinking-token truncation
+**Agent**: review-agent
+**Action**: Read-only review of all three files against the root-cause analysis and the real end-to-end verification.
+**Why**: Final quality gate before merge.
+**Outcome**: pass
+**Branch**: fix/gemini-timeout-below-minimum
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: none (read-only)
+**Notes**: APPROVED, 1 non-blocking item: ARCHITECTURE.md/ADR-003 now factually contradicts the shipped code (still documents the disproven "10s Vercel Hobby hard limit"). Correctly identified this as needing a new ADR (append-only rule), not a fix to this branch — flagged for the orchestrator's already-planned architect-agent follow-up pass.
+---
+
+## [2026-07-04 21:35] Task: Bug fix — Gemini timeout below API minimum + thinking-token truncation
+**Agent**: orchestrator
+**Action**: Merged `fix/gemini-timeout-below-minimum` into `main` (fast-forward) and deleted the branch. Then invoked architect-agent (model: fable) to add ADR-012 documenting the corrected Vercel Hobby ceiling and the Gemini timeout/thinking-token bugs, with an append-only supersession note added to ADR-003 (never editing its original text, per the project's ADR rules).
+**Why**: All gates passed; ARCHITECTURE.md update triggered per the project's rule for changes to documented external-dependency timeout/retry policy.
+**Outcome**: complete
+**Branch**: merged
+**SPEC**: SPEC-01-fridgechef.md
+**Files changed**: lib/claude.ts, app/api/suggest-recipes/route.ts, app/api/extract-ingredients/route.ts, ARCHITECTURE.md
+**Notes**: Both API routes are now confirmed working end-to-end against the real Gemini API (verified via direct curl, not just mocked tests). This closes out the chain of three related post-SPEC fixes: (1) Gemini provider swap, (2) dev-CSP + diagnostic-logging fix, (3) this timeout/thinking-token fix — the last of which the diagnostic logging from fix #2 directly enabled diagnosing quickly. App should now be redeployable and functional on Vercel once GEMINI_API_KEY is set there.
+---
