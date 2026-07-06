@@ -6,6 +6,7 @@ import IngredientTextInput from "../components/IngredientTextInput";
 import PhotoUpload from "../components/PhotoUpload";
 import IngredientConfirmation from "../components/IngredientConfirmation";
 import RecipeList from "../components/RecipeList";
+import RecipeLoadingSkeleton from "../components/RecipeLoadingSkeleton";
 import { DEFAULT_SELECTED_STAPLES } from "../components/PantryStaples";
 import type { Recipe } from "../lib/types";
 
@@ -108,52 +109,68 @@ export default function Home() {
     }
   }
 
+  const containerWidth = state.step === "recipes" || state.loading ? "max-w-5xl" : "max-w-md";
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-6 p-6">
+    <main className={`mx-auto flex min-h-screen ${containerWidth} flex-col gap-6 p-6`}>
       <div>
-        <h1 className="text-2xl font-bold">FridgeChef</h1>
-        <p className="mt-1 text-gray-600">
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-fg-muted">
+          <span className="h-1.5 w-1.5 rounded-full bg-forest-600" />
+          FridgeChef
+        </h2>
+        <h1 className="mt-2 text-2xl font-bold">What&apos;s in your fridge?</h1>
+        <p className="mt-1 text-fg-muted">
           Tell us what&apos;s in your fridge to get recipe ideas.
         </p>
       </div>
 
-      {state.step === "input" && (
+      {state.loading ? (
+        <RecipeLoadingSkeleton />
+      ) : (
         <>
-          <ModeToggle mode={mode} onChange={setMode} />
-          {mode === "text" ? (
-            <IngredientTextInput
-              onSubmit={(ingredients) => dispatch({ type: "INGREDIENTS_CONFIRMED", ingredients })}
+          {state.step === "input" && (
+            <>
+              <ModeToggle mode={mode} onChange={setMode} />
+              {mode === "text" ? (
+                <IngredientTextInput
+                  onSubmit={(ingredients) =>
+                    dispatch({ type: "INGREDIENTS_CONFIRMED", ingredients })
+                  }
+                />
+              ) : (
+                <PhotoUpload
+                  onSuccess={(ingredients) =>
+                    dispatch({ type: "INGREDIENTS_CONFIRMED", ingredients })
+                  }
+                />
+              )}
+            </>
+          )}
+
+          {state.step === "confirm" && (
+            <IngredientConfirmation
+              ingredients={state.ingredients}
+              pantryStaples={state.pantryStaples}
+              error={state.error}
+              onIngredientsChange={(ingredients) =>
+                dispatch({ type: "SET_INGREDIENTS", ingredients })
+              }
+              onPantryStaplesChange={(pantryStaples) =>
+                dispatch({ type: "SET_PANTRY_STAPLES", pantryStaples })
+              }
+              onSubmit={handleGenerate}
             />
-          ) : (
-            <PhotoUpload
-              onSuccess={(ingredients) => dispatch({ type: "INGREDIENTS_CONFIRMED", ingredients })}
+          )}
+
+          {state.step === "recipes" && (
+            <RecipeList
+              recipes={state.recipes}
+              error={state.error}
+              onRegenerate={handleGenerate}
+              onStartOver={() => dispatch({ type: "START_OVER" })}
             />
           )}
         </>
-      )}
-
-      {state.step === "confirm" && (
-        <IngredientConfirmation
-          ingredients={state.ingredients}
-          pantryStaples={state.pantryStaples}
-          loading={state.loading}
-          error={state.error}
-          onIngredientsChange={(ingredients) => dispatch({ type: "SET_INGREDIENTS", ingredients })}
-          onPantryStaplesChange={(pantryStaples) =>
-            dispatch({ type: "SET_PANTRY_STAPLES", pantryStaples })
-          }
-          onSubmit={handleGenerate}
-        />
-      )}
-
-      {state.step === "recipes" && (
-        <RecipeList
-          recipes={state.recipes}
-          loading={state.loading}
-          error={state.error}
-          onRegenerate={handleGenerate}
-          onStartOver={() => dispatch({ type: "START_OVER" })}
-        />
       )}
     </main>
   );

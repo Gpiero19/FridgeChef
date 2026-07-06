@@ -3,9 +3,9 @@ import type { Difficulty } from "../lib/types";
 // ponytail: fixed 3-value mapping, not a generic theming system — this is the
 // only place a difficulty badge exists.
 const STYLES: Record<Difficulty, string> = {
-  easy: "bg-green-100 text-green-800",
-  medium: "bg-amber-100 text-amber-800",
-  hard: "bg-red-100 text-red-800",
+  easy: "bg-forest-50 text-forest-700",
+  medium: "bg-amber-50 text-amber-700",
+  hard: "bg-red-50 text-red-600",
 };
 
 const LABELS: Record<Difficulty, string> = {

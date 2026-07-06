@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import InlineNotice from "./InlineNotice";
 
 interface PhotoUploadProps {
   onSuccess: (ingredients: string[]) => void;
@@ -81,8 +82,26 @@ export default function PhotoUpload({ onSuccess }: PhotoUploadProps) {
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <label className="flex w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 p-6 text-center">
-        <span className="text-base font-medium text-gray-700">
+      <label
+        className={`flex w-full cursor-pointer flex-col items-center gap-2.5 rounded-lg border-[1.5px] border-dashed border-border p-8 text-center transition-colors hover:border-forest-300 hover:bg-forest-50 ${
+          loading ? "animate-pulse" : ""
+        }`}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          className="h-[26px] w-[26px] text-forest-600"
+          aria-hidden="true"
+        >
+          <path
+            d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+          <circle cx="12" cy="13.5" r="3.25" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+        <span className="text-sm font-medium text-fg">
           {loading ? "Analyzing photo…" : "Tap to take or choose a photo"}
         </span>
         <input
@@ -94,11 +113,7 @@ export default function PhotoUpload({ onSuccess }: PhotoUploadProps) {
           aria-label="Upload a photo of your fridge"
         />
       </label>
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
+      {error && <InlineNotice variant="error">{error}</InlineNotice>}
     </div>
   );
 }

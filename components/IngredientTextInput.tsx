@@ -27,14 +27,14 @@ export default function IngredientTextInput({ onSubmit }: IngredientTextInputPro
         onChange={(event) => setText(event.target.value)}
         placeholder="e.g. eggs, milk, spinach&#10;or one ingredient per line"
         rows={5}
-        className="w-full rounded-lg border border-gray-300 p-3 text-base"
+        className="w-full rounded border border-border p-3 text-sm"
         aria-label="Ingredients"
       />
       <button
         type="button"
         disabled={isEmpty}
         onClick={() => onSubmit(parseIngredients(text))}
-        className="w-full rounded-lg bg-blue-600 py-3 text-base font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+        className="w-full rounded bg-forest-600 py-3 font-semibold text-white transition-colors hover:bg-forest-700 disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-fg-faint"
       >
         Find Recipes
       </button>

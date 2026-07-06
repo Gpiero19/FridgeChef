@@ -2,10 +2,10 @@
 
 import type { Recipe } from "../lib/types";
 import RecipeCard from "./RecipeCard";
+import InlineNotice from "./InlineNotice";
 
 interface RecipeListProps {
   recipes: Recipe[];
-  loading: boolean;
   error: string | null;
   onRegenerate: () => void;
   onStartOver: () => void;
@@ -13,38 +13,32 @@ interface RecipeListProps {
 
 export default function RecipeList({
   recipes,
-  loading,
   error,
   onRegenerate,
   onStartOver,
 }: RecipeListProps) {
   return (
     <div className="flex w-full flex-col gap-4">
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
+      {error && <InlineNotice variant="error">{error}</InlineNotice>}
 
-      <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {recipes.map((recipe) => (
           <RecipeCard key={recipe.name} recipe={recipe} />
         ))}
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex items-center gap-4">
         <button
           type="button"
-          disabled={loading}
           onClick={onRegenerate}
-          className="flex-1 rounded-lg bg-blue-600 py-3 text-base font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+          className="flex-1 rounded bg-forest-600 py-3 text-base font-semibold text-white transition-colors hover:bg-forest-700 disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-fg-faint"
         >
-          {loading ? "Regenerating…" : "Regenerate"}
+          Regenerate
         </button>
         <button
           type="button"
           onClick={onStartOver}
-          className="flex-1 rounded-lg border border-gray-300 py-3 text-base font-semibold text-gray-700"
+          className="text-sm font-medium text-fg-muted hover:text-fg"
         >
           Start over
         </button>

@@ -3,11 +3,11 @@
 import { useState } from "react";
 import IngredientChip from "./IngredientChip";
 import PantryStaples from "./PantryStaples";
+import InlineNotice from "./InlineNotice";
 
 interface IngredientConfirmationProps {
   ingredients: string[];
   pantryStaples: string[];
-  loading: boolean;
   error: string | null;
   onIngredientsChange: (ingredients: string[]) => void;
   onPantryStaplesChange: (pantryStaples: string[]) => void;
@@ -17,7 +17,6 @@ interface IngredientConfirmationProps {
 export default function IngredientConfirmation({
   ingredients,
   pantryStaples,
-  loading,
   error,
   onIngredientsChange,
   onPantryStaplesChange,
@@ -46,10 +45,10 @@ export default function IngredientConfirmation({
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <p className="text-sm font-medium text-gray-700">Your ingredients</p>
+        <p className="text-xs font-semibold text-fg-muted">Your ingredients</p>
         <div className="flex flex-wrap gap-2">
           {ingredients.length === 0 && (
-            <p className="text-sm text-gray-500">No ingredients yet — add one below.</p>
+            <InlineNotice variant="neutral">No ingredients yet — add one below.</InlineNotice>
           )}
           {ingredients.map((ingredient) => (
             <IngredientChip
@@ -67,25 +66,21 @@ export default function IngredientConfirmation({
           onBlur={addIngredient}
           placeholder="Add an ingredient…"
           aria-label="Add an ingredient"
-          className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+          className="w-full rounded border border-border p-2 text-sm"
         />
       </div>
 
       <PantryStaples selected={pantryStaples} onChange={onPantryStaplesChange} />
 
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
+      {error && <InlineNotice variant="error">{error}</InlineNotice>}
 
       <button
         type="button"
-        disabled={loading || ingredients.length === 0}
+        disabled={ingredients.length === 0}
         onClick={onSubmit}
-        className="w-full rounded-lg bg-blue-600 py-3 text-base font-semibold text-white disabled:cursor-not-allowed disabled:bg-gray-300"
+        className="w-full rounded bg-forest-600 py-3 font-semibold text-white transition-colors hover:bg-forest-700 disabled:cursor-not-allowed disabled:bg-surface-sunken disabled:text-fg-faint"
       >
-        {loading ? "Generating recipes…" : "Generate Recipes"}
+        Generate Recipes
       </button>
     </div>
   );

@@ -47,7 +47,7 @@ export default function PantryStaples({ selected, onChange }: PantryStaplesProps
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium text-gray-700">Pantry staples (always on hand)</p>
+      <p className="text-xs font-semibold text-fg-muted">Pantry staples (always on hand)</p>
       <div className="flex flex-wrap gap-2">
         {allStaples.map((staple) => (
           <IngredientChip
@@ -66,7 +66,7 @@ export default function PantryStaples({ selected, onChange }: PantryStaplesProps
         onBlur={addCustomStaple}
         placeholder="Add another staple…"
         aria-label="Add a pantry staple"
-        className="w-full rounded-lg border border-gray-300 p-2 text-sm"
+        className="w-full rounded border border-border p-2 text-sm"
       />
     </div>
   );
