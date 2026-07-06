@@ -21,6 +21,7 @@ export const recipeArraySchema = z.array(recipeSchema).length(3);
 export const suggestRecipesRequestSchema = z.object({
   ingredients: z.array(z.string().min(1)).min(1),
   pantryStaples: z.array(z.string()),
+  excludeRecipeNames: z.array(z.string()).optional(),
 });
 
 export type SuggestRecipesRequest = z.infer<typeof suggestRecipesRequestSchema>;

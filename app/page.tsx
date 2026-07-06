@@ -1,22 +1,32 @@
 "use client";
 
-import { useReducer, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import ModeToggle from "../components/ModeToggle";
 import IngredientTextInput from "../components/IngredientTextInput";
 import PhotoUpload from "../components/PhotoUpload";
 import IngredientConfirmation from "../components/IngredientConfirmation";
 import RecipeList from "../components/RecipeList";
+import RecipeCard from "../components/RecipeCard";
 import RecipeLoadingSkeleton from "../components/RecipeLoadingSkeleton";
 import { DEFAULT_SELECTED_STAPLES } from "../components/PantryStaples";
 import type { Recipe } from "../lib/types";
 
 type Step = "input" | "confirm" | "recipes";
 
+const ALL_RECIPES_STORAGE_KEY = "fridgechef.allRecipes";
+
+function dedupeByName(recipes: Recipe[]): Recipe[] {
+  const seen = new Map<string, Recipe>();
+  for (const recipe of recipes) seen.set(recipe.name, recipe);
+  return [...seen.values()];
+}
+
 interface State {
   step: Step;
   ingredients: string[];
   pantryStaples: string[];
   recipes: Recipe[];
+  allRecipes: Recipe[];
   loading: boolean;
   error: string | null;
 }
@@ -35,6 +45,7 @@ const initialState: State = {
   ingredients: [],
   pantryStaples: DEFAULT_SELECTED_STAPLES,
   recipes: [],
+  allRecipes: [],
   loading: false,
   error: null,
 };
@@ -50,14 +61,20 @@ function reducer(state: State, action: Action): State {
     case "GENERATE_START":
       return { ...state, loading: true, error: null };
     case "GENERATE_SUCCESS":
-      return { ...state, step: "recipes", loading: false, recipes: action.recipes };
+      return {
+        ...state,
+        step: "recipes",
+        loading: false,
+        recipes: action.recipes,
+        allRecipes: dedupeByName([...state.allRecipes, ...action.recipes]),
+      };
     case "GENERATE_ERROR":
       // Stay on the current step — ingredients/staples are untouched so the
       // user can retry (from confirm) or regenerate (from recipes) without
       // losing anything.
       return { ...state, loading: false, error: action.error };
     case "START_OVER":
-      return initialState;
+      return { ...initialState, allRecipes: state.allRecipes };
     default:
       return state;
   }
@@ -74,7 +91,23 @@ function isErrorResponseBody(value: unknown): value is ErrorResponseBody {
 
 export default function Home() {
   const [mode, setMode] = useState<"text" | "photo">("text");
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [showHistory, setShowHistory] = useState(false);
+  const [state, dispatch] = useReducer(reducer, initialState, (init) => {
+    if (typeof window === "undefined") return init;
+    const stored = window.localStorage.getItem(ALL_RECIPES_STORAGE_KEY);
+    if (!stored) return init;
+    try {
+      const allRecipes = JSON.parse(stored);
+      if (Array.isArray(allRecipes)) return { ...init, allRecipes };
+    } catch {
+      // ignore malformed storage
+    }
+    return init;
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(ALL_RECIPES_STORAGE_KEY, JSON.stringify(state.allRecipes));
+  }, [state.allRecipes]);
 
   async function handleGenerate() {
     dispatch({ type: "GENERATE_START" });
@@ -85,6 +118,7 @@ export default function Home() {
         body: JSON.stringify({
           ingredients: state.ingredients,
           pantryStaples: state.pantryStaples,
+          excludeRecipeNames: state.allRecipes.map((r) => r.name),
         }),
       });
 
@@ -109,22 +143,40 @@ export default function Home() {
     }
   }
 
-  const containerWidth = state.step === "recipes" || state.loading ? "max-w-5xl" : "max-w-md";
+  const containerWidth =
+    state.step === "recipes" || state.loading || showHistory ? "max-w-5xl" : "max-w-md";
 
   return (
     <main className={`mx-auto flex min-h-screen ${containerWidth} flex-col gap-6 p-6`}>
-      <div>
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-fg-muted">
-          <span className="h-1.5 w-1.5 rounded-full bg-forest-600" />
-          FridgeChef
-        </h2>
-        <h1 className="mt-2 text-2xl font-bold">What&apos;s in your fridge?</h1>
-        <p className="mt-1 text-fg-muted">
-          Tell us what&apos;s in your fridge to get recipe ideas.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-fg-muted">
+            <span className="h-1.5 w-1.5 rounded-full bg-forest-600" />
+            FridgeChef
+          </h2>
+          <h1 className="mt-2 text-2xl font-bold">What&apos;s in your fridge?</h1>
+          <p className="mt-1 text-fg-muted">
+            Tell us what&apos;s in your fridge to get recipe ideas.
+          </p>
+        </div>
+        {state.allRecipes.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowHistory((prev) => !prev)}
+            className="shrink-0 rounded border border-border-soft px-3 py-1.5 text-sm font-medium text-fg-muted hover:text-fg"
+          >
+            {showHistory ? "Back" : `All recipes (${state.allRecipes.length})`}
+          </button>
+        )}
       </div>
 
-      {state.loading ? (
+      {showHistory ? (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {state.allRecipes.map((recipe) => (
+            <RecipeCard key={recipe.name} recipe={recipe} />
+          ))}
+        </div>
+      ) : state.loading ? (
         <RecipeLoadingSkeleton />
       ) : (
         <>

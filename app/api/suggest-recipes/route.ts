@@ -34,12 +34,16 @@ function log(status: number, requestId: string, durationMs: number, errorDetail?
   );
 }
 
-function buildPrompt(ingredients: string[], pantryStaples: string[]): string {
+function buildPrompt(
+  ingredients: string[],
+  pantryStaples: string[],
+  excludeRecipeNames: string[],
+): string {
   return `You are a recipe generator. Given the ingredients a user has on hand and a list of pantry staples they always have available, suggest exactly 3 distinct recipes.
 
 Ingredients on hand: ${JSON.stringify(ingredients)}
 Pantry staples (assume always available, do NOT list these in missingIngredients): ${JSON.stringify(pantryStaples)}
-
+${excludeRecipeNames.length > 0 ? `\nDo NOT suggest any of these recipes again, they were already shown to the user: ${JSON.stringify(excludeRecipeNames)}\n` : ""}
 Respond with ONLY a JSON array of exactly 3 recipe objects, no prose, no markdown code fences. Each object must have exactly these fields:
 {
   "name": string,
@@ -78,13 +82,13 @@ export async function POST(request: Request) {
       "Request body must include a non-empty `ingredients` array and a `pantryStaples` array.",
     );
   }
-  const { ingredients, pantryStaples } = parsedBody.data;
+  const { ingredients, pantryStaples, excludeRecipeNames = [] } = parsedBody.data;
 
   let rawText: string;
   try {
     const response = await genAI.models.generateContent({
       model: AI_MODEL,
-      contents: buildPrompt(ingredients, pantryStaples),
+      contents: buildPrompt(ingredients, pantryStaples, excludeRecipeNames),
       config: {
         responseMimeType: "application/json",
         maxOutputTokens: 2048,
