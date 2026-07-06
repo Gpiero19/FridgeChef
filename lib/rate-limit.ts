@@ -9,7 +9,10 @@
 // exempt so photo users aren't penalized relative to text users.
 
 const WINDOW_MS = 60 * 60 * 1000; // 1 hour
-export const LIMIT = 5;
+// Gemini free tier allows ~10 req/min per project (shared across all users of
+// this app), so 20/hour per IP is still far below that ceiling — this cap is
+// about throttling a single abusive/looping client, not Gemini's real limit.
+export const LIMIT = 20;
 
 const buckets = new Map<string, number[]>();
 
