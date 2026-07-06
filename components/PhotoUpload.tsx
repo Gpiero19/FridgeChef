@@ -35,10 +35,6 @@ export default function PhotoUpload({ onSuccess }: PhotoUploadProps) {
       setError("Please choose a JPEG, PNG, or WebP image.");
       return;
     }
-    if (file.size > MAX_FILE_BYTES) {
-      setError("Image must be 5 MB or smaller.");
-      return;
-    }
 
     setLoading(true);
     try {
@@ -46,8 +42,17 @@ export default function PhotoUpload({ onSuccess }: PhotoUploadProps) {
       const imageCompression = (await import("browser-image-compression")).default;
       const compressed = await imageCompression(file, {
         maxWidthOrHeight: 1024,
+        maxSizeMB: 2,
         useWebWorker: true,
       });
+
+      // Size gate runs post-compression: phone-camera originals routinely exceed
+      // 5MB but compress well under it, so checking here (not on `file`) avoids
+      // rejecting photos that compression would have handled fine.
+      if (compressed.size > MAX_FILE_BYTES) {
+        setError("Image must be 5 MB or smaller.");
+        return;
+      }
 
       const formData = new FormData();
       formData.append("image", compressed, file.name);
