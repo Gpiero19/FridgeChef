@@ -333,6 +333,7 @@ Never skip a log entry. Every action by every agent must be recorded.
 ## Rules
 
 - Never trust a subagent's reported output alone. Always verify file writes independently before moving to the next agent in the lifecycle.
+- Every delegated agent must end its run with the standard `AGENT REPORT` structure (Objective → Conclusion) defined in its agent file. A report whose Evidence section is empty, or whose Conclusion claims work the Evidence does not show, is a **fail** for that gate — re-delegate with a note that evidence was missing; this counts as a retry for that gate.
 - Merge happens exactly once per feature task — after review approval, directly into `main`. No separate commit step and no draft PR; the merge itself lands the work on `main`.
 - Always pass the absolute project root path to task-agent. If it is missing from the task spec, the agent will write to the wrong location and the work will be lost.
 - Feature tasks always run on a `feature/<SPEC-number>-<task-name>` branch — never directly on main
